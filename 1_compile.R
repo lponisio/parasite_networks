@@ -5,6 +5,7 @@ rm(list=ls())
 setwd("~/University of Oregon Dropbox/Lauren Ponisio/")
 setwd("parasite_networks_saved")
 source("../parasite_networks/src/CalcMetrics.R")
+source("../parasite_networks/src/SpCalcMetrics.R")
 source("../parasite_networks/src/vaznull2.R")
 
 ## # Regular expression
@@ -69,61 +70,36 @@ sf.par$SampleRound <- as.numeric(sf.par$SampleRound)
 pnw.par$SampleRound <- as.numeric(pnw.par$SampleRound)
 
 par.mets <- rbind(pnw.par, sf.par, si.par)
-sp.mets$Year <- as.numeric(sp.mets$Year)
 
-sp.mets$SampleRound <- as.numeric(sp.mets$SampleRound)
+par.mets <- par.mets[!is.na(par.mets$GenusSpecies),]
+par.mets <- par.mets[par.mets$GenusSpecies != "",]
 
-poll.mets <- sp.mets[sp.mets$speciesType == "higher.level",]
+syrphid.genera <- c("Eristalis", "Eristalinus",
+                    "Copestylum", "Fazia", "Helophilus",
+                    "Paragus", "Syritta", "Syrphus", "Toxomerus",
+                    "Eupeodes", "Allograpta", "Melanostoma",
+                    "Sphaerophoria")
 
-poll.mets$Genus <- sapply(strsplit(poll.mets$GenusSpecies,
-                          "\\s"),
-                          function(x) x[1])
+par.mets <- par.mets[!par.mets$Genus %in% syrphid.genera,]
 
-poll.mets$weighted.closeness[poll.mets$Genus == "Bombus" &
-                             poll.mets$Project == "SI"]
+par.mets <- par.mets[par.mets$SpScreened != 0,]
 
-poll.mets$weighted.closeness[poll.mets$Genus == "Bombus" &
-                             poll.mets$Project == "PN"]
+par.mets$PropGenusCrithidiaPresence <-
+  par.mets$GenusCrithidiaPresence/par.mets$GenusScreened
 
-key <- colnames(par.mets)[colnames(par.mets) %in% colnames(poll.mets)]
-
-par.mets$key <- apply(par.mets[ , key ], 1, paste,
-                      collapse = "-" )
-poll.mets$key <- apply(poll.mets[ , key ], 1, paste,
-                      collapse = "-" )
-
-si.keys <- poll.mets$key[poll.mets$Project == "SI"]
-si.par.keys <- par.mets$key[par.mets$Project == "SI"]
-
-si.keys[si.keys %in% si.par.keys]
-
-dim(par.mets)
-all.mets <- left_join(par.mets, poll.mets, by=key)
-dim(all.mets)
+par.mets$PropGenusApicystisSpp <-
+  par.mets$GenusApicystisSpp/par.mets$GenusScreened
 
 
+par.mets$PropSpCrithidiaPresence <-
+  par.mets$SpCrithidiaPresence/par.mets$SpScreened
 
-all.mets$PropGenusCrithidiaPresence <-
-  all.mets$GenusCrithidiaPresence/all.mets$GenusScreened
-
-## all.mets$PropSpCrithidiaPresence <-
-##   all.mets$SpCrithidiaPresence/all.mets$SpScreened
-
-
-## ggplot(all.mets, aes(x = weighted.closeness,
-##                    y = PropSpCrithidiaPresence,
-##                     color = Project)) +
-##   geom_point(size=2)
+par.mets$PropSpApicystisSpp <-
+  par.mets$SpApicystisSpp/par.mets$SpScreened
 
 
-## bombus <- all.mets[all.mets$Genus == "Bombus",]
-
-## ggplot(bombus, aes(x = weighted.closeness,
-##                    y = PropSpCrithidiaPresence,
-##                     color = Project)) +
-##   geom_point(size=2)
-
-
+save(par.mets,
+     file="../parasite_networks/data/sp_genus_site_mets.RData")
 
 ## ********************************************************
 ## Networks
@@ -143,61 +119,59 @@ nets.si <- nets
 
 N <-  99
 all.nets <- c(nets.pnw, nets.sf, nets.si)
-
 all.nets <- all.nets[apply(sapply(all.nets, dim) > 2, 2, all)]
 
-mets <- lapply(all.nets, calcNetworkMetrics,
-               N=N)
+## mets <- lapply(all.nets, calcNetworkMetrics,
+##                N=N)
+
+## save(mets,
+##      file="../parasite_networks/data/raw_mets.RData")
+load(file="../parasite_networks/data/raw_mets.RData")
 
 cols.to.keep <- c("Project", "Year", "SampleRound",
-                  colnames(all.mets)[grep("Site", colnames(all.mets))],
-                  colnames(all.mets)[grep("Genus", colnames(all.mets))]
+                  colnames(par.mets)[grep("Site",
+                                          colnames(par.mets))],
+                  colnames(par.mets)[grep("Genus",
+                                          colnames(par.mets))]
                   )
 
 cols.to.keep <- cols.to.keep[cols.to.keep != "GenusSpecies" &
                              cols.to.keep != "SpSiteYear" ]
 
-network.metrics <- prepDat(mets,  all.mets,
+network.metrics <- prepDat(mets,  par.mets,
                     cols.to.keep=cols.to.keep,
                     net.type="YearSR")
 
 save(network.metrics,
      file="../parasite_networks/data/network_mets.RData")
 
-bombus <- cor.dats[cor.dats$Genus == "Bombus",]
+## *****************************************************
+## 
+## *****************************************************
 
-nodf <- ggplot(bombus, aes(x = zweighted.NODF,
-                   y = PropGenusCrithidiaPresence,
-                    color = Project)) +
-  geom_point(size=2)
+## N <- 99
+## sp.mets <- lapply(all.nets, SpCalcNetworkMetrics,
+##                N=N, index=c("closeness", "betweenness",
+##                             "degree", "d",
+##                             "nestedrank"))
+## save(sp.mets,
+##      file="../parasite_networks/data/raw_sp_mets.RData")
 
+load(file="../parasite_networks/data/raw_sp_mets.RData")
 
-niche.overlap.hl <- ggplot(bombus,
-                        aes(x = zniche.overlap.HL,
-                            y = PropGenusCrithidiaPresence,
-                            color = Project)) +
-  geom_point(size=2)
-
-
-niche.overlap.ll <- ggplot(bombus,
-                        aes(x = zniche.overlap.LL,
-                            y = PropGenusCrithidiaPresence,
-                            color = Project)) +
-  geom_point(size=2)
-
-
-
-
-complementarity.hl <- ggplot(bombus,
-                        aes(x = zfunctional.complementarity.HL,
-                            y = PropGenusCrithidiaPresence,
-                            color = Project)) +
-  geom_point(size=2)
+cols.to.keep <- unique(c("Project", "Year",
+                         "SampleRound",
+                         "Site",
+                  colnames(par.mets)[grep("Sp",
+                                          colnames(par.mets))],
+                  colnames(par.mets)[grep("Genus",
+                                          colnames(par.mets))]
+                  ))
 
 
-complementarity.ll <- ggplot(bombus,
-                        aes(x = zfunctional.complementarity.LL,
-                            y = PropGenusCrithidiaPresence,
-                            color = Project)) +
-  geom_point(size=2)
+sp.network.metrics <- SpPrepDat(sp.mets,  par.mets,
+                    cols.to.keep=cols.to.keep,
+                    net.type="YearSR")
 
+save(sp.mets,
+     file="../parasite_networks/data/sp_mets.RData")
