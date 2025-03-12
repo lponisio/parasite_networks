@@ -44,7 +44,7 @@ calcZvals <- function(sp.level, true.stats, null.stats){
 ##  function that computes summary statistics on simulated null matrices
 ##  (nulls simulated from web N times)
 SpCalcNetworkMetrics <- function(dat.web, N,
-                               index= c("closeness"), ...) {
+                               index, ...) {
 
     ## check that matrix is proper format (no empty row/col and no NAs)
     ## drop empty rows and columns
