@@ -8,55 +8,23 @@ source("../parasite_networks/src/CalcMetrics.R")
 source("../parasite_networks/src/SpCalcMetrics.R")
 source("../parasite_networks/src/vaznull2.R")
 
-## # Regular expression
-## pattern <- "networks/([A-Z]{2})"
-
-## # Use gregexpr to find matches and regmatches to extract them
-## matches <- regmatches(net.files, gregexpr(pattern, net.files))
-
-## # Extract the captured groups (the two capital letters)
-## extracted <- str_match_all(net.files, pattern)
-## extracted.names <- sapply(extracted, function(x) x[,2])
-
-## names(nets) <- extracted.names
-
-## ********************************************************
-## Species metrics
-## ********************************************************
-
-sp.files <- file.path("sp_metrics", list.files("sp_metrics"))
-
-load(sp.files[[1]])
-pnw.sp <- sp.lev
-pnw.sp$Project <- "PN"
-
-load(sp.files[[2]])
-sf.sp <- sp.lev
-sf.sp$Project <- "SF"
-
-load(sp.files[[3]])
-si.sp <- sp.lev
-si.sp$Project <- "SI"
-
-sp.mets <- rbind(pnw.sp, sf.sp, si.sp)
-
 ## ********************************************************
 ## Parasite prevalence
 ## ********************************************************
-
 par.files <- file.path("screenings", list.files("screenings"))
+par.files
 
 load(par.files[[1]])
+hja.par <- all.sums
+
+load(par.files[[2]])
 pnw.par <- all.sums
-pnw.par$Project <- "PN"
 
 load(par.files[[3]])
 sf.par <- all.sums
-sf.par$Project <- "SF"
 
-load(par.files[[2]])
+load(par.files[[4]])
 si.par <- all.sums
-si.par$Project <- "SI"
 
 colnames(pnw.par)[colnames(pnw.par)=="Stand"] <- "Site"
 colnames(pnw.par)[colnames(pnw.par)=="Round"] <- "SampleRound"
@@ -64,12 +32,14 @@ colnames(pnw.par)[colnames(pnw.par)=="Round"] <- "SampleRound"
 si.par$Year <- as.numeric(si.par$Year)
 sf.par$Year <- as.numeric(sf.par$Year)
 pnw.par$Year <- as.numeric(pnw.par$Year)
+hja.par$Year <- as.numeric(hja.par$Year)
 
 si.par$SampleRound <- as.numeric(si.par$SampleRound)
 sf.par$SampleRound <- as.numeric(sf.par$SampleRound)
 pnw.par$SampleRound <- as.numeric(pnw.par$SampleRound)
+hja.par$SampleRound <- as.numeric(hja.par$SampleRound)
 
-par.mets <- rbind(pnw.par, sf.par, si.par)
+par.mets <- rbind(pnw.par, sf.par, si.par, hja.par)
 
 par.mets <- par.mets[!is.na(par.mets$GenusSpecies),]
 par.mets <- par.mets[par.mets$GenusSpecies != "",]
@@ -78,11 +48,14 @@ syrphid.genera <- c("Eristalis", "Eristalinus",
                     "Copestylum", "Fazia", "Helophilus",
                     "Paragus", "Syritta", "Syrphus", "Toxomerus",
                     "Eupeodes", "Allograpta", "Melanostoma",
-                    "Sphaerophoria")
+                    "Sphaerophoria", "Erynnis")
 
 par.mets <- par.mets[!par.mets$Genus %in% syrphid.genera,]
 
 par.mets <- par.mets[par.mets$SpScreened != 0,]
+
+sort(table(par.mets$GenusSpecies))
+table(par.mets$GenusSpecies, par.mets$Project)
 
 par.mets$PropGenusCrithidiaPresence <-
   par.mets$GenusCrithidiaPresence/par.mets$GenusScreened
@@ -97,6 +70,14 @@ par.mets$PropSpCrithidiaPresence <-
 par.mets$PropSpApicystisSpp <-
   par.mets$SpApicystisSpp/par.mets$SpScreened
 
+sampling <- data.frame(
+  Project = c("PN", "SI", "SF", "HJ"),
+  SurveyMin =c(70, 600, 90, 100)
+)
+
+dim(par.mets)
+par.mets <- merge(par.mets, sampling, key="Project")
+dim(par.mets)
 
 save(par.mets,
      file="../parasite_networks/data/sp_genus_site_mets.RData")
@@ -109,16 +90,19 @@ net.files <- file.path("networks", list.files("networks"))
 net.files
 
 load(net.files[[1]])
-nets.pnw <- nets
+nets.hja <- nets
 
 load(net.files[[2]])
-nets.sf <- nets
+nets.pnw <- nets
 
 load(net.files[[3]])
+nets.sf <- nets
+
+load(net.files[[4]])
 nets.si <- nets
 
 N <-  99
-all.nets <- c(nets.pnw, nets.sf, nets.si)
+all.nets <- c(nets.pnw, nets.sf, nets.si, nets.hja)
 all.nets <- all.nets[apply(sapply(all.nets, dim) > 2, 2, all)]
 
 ## mets <- lapply(all.nets, calcNetworkMetrics,
@@ -126,9 +110,10 @@ all.nets <- all.nets[apply(sapply(all.nets, dim) > 2, 2, all)]
 
 ## save(mets,
 ##      file="../parasite_networks/data/raw_mets.RData")
+
 load(file="../parasite_networks/data/raw_mets.RData")
 
-cols.to.keep <- c("Project", "Year", "SampleRound",
+cols.to.keep <- c("Project", "Year", "SampleRound", "SurveyMin",
                   colnames(par.mets)[grep("Site",
                                           colnames(par.mets))],
                   colnames(par.mets)[grep("Genus",
@@ -142,26 +127,41 @@ network.metrics <- prepDat(mets,  par.mets,
                     cols.to.keep=cols.to.keep,
                     net.type="YearSR")
 
+
+network.metrics$GenusRelativeAbundance <-
+ log(network.metrics$GenusAbundance/network.metrics$SurveyMin)
+
+network.metrics$SiteRelativeBeeAbundance <-
+ log(network.metrics$SiteBeeAbundance/network.metrics$SurveyMin)
+
+network.metrics$SiteRelativeBeeDiversity <-
+ log(network.metrics$SiteBeeDiversity/network.metrics$SurveyMin)
+
 save(network.metrics,
      file="../parasite_networks/data/network_mets.RData")
 
 ## *****************************************************
-## 
+## Species level metrics
 ## *****************************************************
 
-## N <- 99
-## sp.mets <- lapply(all.nets, SpCalcNetworkMetrics,
-##                N=N, index=c("closeness", "betweenness",
-##                             "degree", "d",
-##                             "nestedrank"))
-## save(sp.mets,
-##      file="../parasite_networks/data/raw_sp_mets.RData")
+N <- 99
+sp.mets <- lapply(all.nets, SpCalcNetworkMetrics,
+               N=N, index=c("closeness", "betweenness",
+                            "degree", "d",
+                            "nestedrank",
+                            "proportional generality"))
+save(sp.mets,
+     file="../parasite_networks/data/raw_sp_mets.RData")
 
 load(file="../parasite_networks/data/raw_sp_mets.RData")
 
 cols.to.keep <- unique(c("Project", "Year",
                          "SampleRound",
                          "Site",
+                         "SiteBeeAbundance",
+                         "SiteBeeRichness",
+                         "SiteBeeDiversity",
+                         "SurveyMin",
                   colnames(par.mets)[grep("Sp",
                                           colnames(par.mets))],
                   colnames(par.mets)[grep("Genus",
@@ -173,5 +173,45 @@ sp.network.metrics <- SpPrepDat(sp.mets,  par.mets,
                     cols.to.keep=cols.to.keep,
                     net.type="YearSR")
 
-save(sp.mets,
+sp.network.metrics$GenusRelativeAbundance <-
+ log(sp.network.metrics$GenusAbundance/sp.network.metrics$SurveyMin)
+
+sp.network.metrics$SpRelativeAbundance <-
+ log(sp.network.metrics$SpAbundance/sp.network.metrics$SurveyMin)
+
+sp.network.metrics$SiteRelativeBeeAbundance <-
+ log(sp.network.metrics$SiteBeeAbundance/sp.network.metrics$SurveyMin)
+
+sp.network.metrics$SiteRelativeBeeDiversity <-
+ log(sp.network.metrics$SiteBeeDiversity/sp.network.metrics$SurveyMin)
+
+
+save(sp.network.metrics,
      file="../parasite_networks/data/sp_mets.RData")
+
+
+## *****************************************************
+## Pop gen
+## *****************************************************
+
+SI.popgen <- read.csv("popgen/SI.csv")
+
+SI.popgen <- SI.popgen %>%
+  pivot_longer(
+    cols = starts_with("Site_"),
+    names_to = "Site",
+    names_prefix = "Site_",
+    values_to = "Value",
+    values_drop_na = TRUE
+  )
+
+SI.popgen
+
+SI.popgen <- SI.popgen %>%
+  pivot_wider(names_from = Metric, values_from = Value)
+SI.popgen
+
+
+
+save(SI.popgen,
+     file="../parasite_networks/data/SI_popgen.RData")
