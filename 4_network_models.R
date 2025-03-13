@@ -24,7 +24,8 @@ names(par.formulas) <- par.cols
 for(par in par.cols){
   par.formulas[[par]] <- bf(formula(paste0(par, "| trials(SpScreened)~", 
                          paste(c(net.cols.scale, "(1|Site)",
-                                 "(1|Year)", "Project"),
+                                 "(1|Year)", "Project",
+                                 "(1|gr(GenusSpecies, cov = phylo_matrix))"),
                                collapse="+"))), family="binomial")
 }
 
@@ -33,11 +34,20 @@ for(par in par.cols){
 ## *******************************************************
 
 bombus <- sp.network.metrics[sp.network.metrics$Genus == "Bombus",]
+load("data/Bombus_phylogeny.Rdata")
+not.in.phylo <- unique(bombus$GenusSpecies[
+  !bombus$GenusSpecies
+  %in%
+  phylo$tip.label])
+not.in.phylo
+
+bombus <- bombus[bombus$GenusSpecies != not.in.phylo,] 
 
 ## *******************************************************
 
 bombus.CrithidiaPresence <- brm(par.formulas$SpCrithidiaPresence,
                         bombus,
+                        data2=list(phylo_matrix=phylo_matrix),
                         cores=ncores,
                         iter = 10^4,
                         chains =3,
@@ -120,10 +130,93 @@ bayes_R2(bombus.SpNosemaBombi)
 plot(pp_check(bombus.SpNosemaBombi, resp="SpSpNosemaBombi", ndraws=10^3))
 
 ## *******************************************************
+## Melissodes
+## *******************************************************
+
+melissodes <- sp.network.metrics[sp.network.metrics$Genus ==
+                                 "Melissodes",]
+load("data/Melissodes_phylogeny.Rdata")
+not.in.phylo <- unique(melissodes$GenusSpecies[
+  !melissodes$GenusSpecies
+  %in%
+  phylo$tip.label])
+not.in.phylo
+
+melissodes <- melissodes[melissodes$GenusSpecies != not.in.phylo,]
+
+## *******************************************************
+
+melissodes.CrithidiaPresence <- brm(par.formulas$SpCrithidiaPresence,
+                        melissodes,
+                        cores=ncores,
+                        iter = 10^4,
+                        chains =3,
+                        thin=1,
+                        init=0,
+                        open_progress = FALSE,
+                        control = list(adapt_delta = 0.999,
+                                       stepsize = 0.001,
+                                       max_treedepth = 20))
+                  
+write.ms.table(melissodes.CrithidiaPresence, "melissodes_CrithidiaPresence")
+save(melissodes,melissodes.CrithidiaPresence,
+     file="saved/melissodes_CrithidiaPresence.Rdata")
+
+load(file="saved/melissodes_CrithidiaPresence.Rdata")
+
+plot.res(melissodes.CrithidiaPresence, "melissodes_CrithidiaPresence")
+
+summary(melissodes.CrithidiaPresence)
+
+bayes_R2(melissodes.CrithidiaPresence)
+
+plot(pp_check(melissodes.CrithidiaPresence,
+              resp="SpCrithidiaPresence", ndraws=10^3))
+
+## *******************************************************
+
+melissodes.ApicystisSpp <- brm(par.formulas$SpApicystisSpp,
+                        melissodes,
+                        cores=ncores,
+                        iter = 10^4,
+                        chains =3,
+                        thin=1,
+                        init=0,
+                        open_progress = FALSE,
+                        control = list(adapt_delta = 0.999,
+                                       stepsize = 0.001,
+                                       max_treedepth = 20))
+                  
+write.ms.table(melissodes.ApicystisSpp, "melissodes_ApicystisSpp")
+save(melissodes,melissodes.ApicystisSpp,
+     file="saved/melissodes_ApicystisSpp.Rdata")
+
+load(file="saved/melissodes_ApicystisSpp.Rdata")
+
+plot.res(melissodes.ApicystisSpp, "melissodes_ApicystisSpp")
+
+summary(melissodes.ApicystisSpp)
+
+bayes_R2(melissodes.ApicystisSpp)
+
+plot(pp_check(melissodes.ApicystisSpp, resp="SpApicystisSpp", ndraws=10^3))
+
+## *******************************************************
 ## Apis
 ## *******************************************************
 
 apis <- sp.network.metrics[sp.network.metrics$Genus == "Apis",]
+
+## Drop phylogeny from models
+par.formulas <- vector(mode="list", length=length(par.cols))
+names(par.formulas) <- par.cols
+for(par in par.cols){
+  par.formulas[[par]] <- bf(formula(paste0(par, "| trials(SpScreened)~", 
+                         paste(c(net.cols.scale, "(1|Site)",
+                                 "(1|Year)", "Project",
+                               collapse="+"))), family="binomial")
+}
+
 
 ## *******************************************************
 
@@ -209,69 +302,3 @@ summary(apis.SpNosemaCeranae)
 bayes_R2(apis.SpNosemaCeranae)
 
 plot(pp_check(apis.SpNosemaCeranae, resp="SpSpNosemaCeranae", ndraws=10^3))
-
-## *******************************************************
-## Melissodes
-## *******************************************************
-
-melissodes <- sp.network.metrics[sp.network.metrics$Genus == "Melissodes",]
-
-## *******************************************************
-
-melissodes.CrithidiaPresence <- brm(par.formulas$SpCrithidiaPresence,
-                        melissodes,
-                        cores=ncores,
-                        iter = 10^4,
-                        chains =3,
-                        thin=1,
-                        init=0,
-                        open_progress = FALSE,
-                        control = list(adapt_delta = 0.999,
-                                       stepsize = 0.001,
-                                       max_treedepth = 20))
-                  
-write.ms.table(melissodes.CrithidiaPresence, "melissodes_CrithidiaPresence")
-save(melissodes,melissodes.CrithidiaPresence,
-     file="saved/melissodes_CrithidiaPresence.Rdata")
-
-load(file="saved/melissodes_CrithidiaPresence.Rdata")
-
-plot.res(melissodes.CrithidiaPresence, "melissodes_CrithidiaPresence")
-
-summary(melissodes.CrithidiaPresence)
-
-bayes_R2(melissodes.CrithidiaPresence)
-
-plot(pp_check(melissodes.CrithidiaPresence,
-              resp="SpCrithidiaPresence", ndraws=10^3))
-
-## *******************************************************
-
-melissodes.ApicystisSpp <- brm(par.formulas$SpApicystisSpp,
-                        melissodes,
-                        cores=ncores,
-                        iter = 10^4,
-                        chains =3,
-                        thin=1,
-                        init=0,
-                        open_progress = FALSE,
-                        control = list(adapt_delta = 0.999,
-                                       stepsize = 0.001,
-                                       max_treedepth = 20))
-                  
-write.ms.table(melissodes.ApicystisSpp, "melissodes_ApicystisSpp")
-save(melissodes,melissodes.ApicystisSpp,
-     file="saved/melissodes_ApicystisSpp.Rdata")
-
-load(file="saved/melissodes_ApicystisSpp.Rdata")
-
-plot.res(melissodes.ApicystisSpp, "melissodes_ApicystisSpp")
-
-summary(melissodes.ApicystisSpp)
-
-bayes_R2(melissodes.ApicystisSpp)
-
-plot(pp_check(melissodes.ApicystisSpp, resp="SpApicystisSpp", ndraws=10^3))
-
-## *******************************************************
-
