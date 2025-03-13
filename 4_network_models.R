@@ -6,7 +6,7 @@ source('src/writeResultsTable.R')
 source("src/init.R")
 library(brms)
 
-load(file="../parasite_networks/data/sp_mets.RData")
+load(file="data/sp_mets.RData")
 ncores <- 3
 
 net.cols <- c("zweighted.betweenness",
