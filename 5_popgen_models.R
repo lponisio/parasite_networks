@@ -3,9 +3,9 @@ rm(list=ls())
 setwd("~/University of Oregon Dropbox/Lauren Ponisio/")
 setwd("parasite_networks")
 library(brms)
-library(performance)
 library(lme4)
 library(car)
+library(DHARMa)
 ncores <- 3
 
 
@@ -35,10 +35,9 @@ dim(bombus)
 ## Build and assess models
 ## *******************************************************
 
-net.cols <- c("Ho",
+net.cols <- c("Ho", ## heterozygocity 
              ## "Hs", # sooooo colinear
-              "Fis")
-
+              "Fis") ## inbreeding
 
 net.cols.scale <- paste0("scale(", net.cols, ")")
 
@@ -82,7 +81,7 @@ bombus.CrithidiaPresence <- brm(par.formulas$SpCrithidiaPresence,
                         bombus,
                         cores=ncores,
                         iter = 10^4,
-                        chains =3,
+                        chains =1,
                         thin=1,
                         init=0,
                         open_progress = FALSE,
@@ -99,7 +98,10 @@ load(file="saved/popgen_bombus_CrithidiaPresence.Rdata")
 
 plot.res(bombus.CrithidiaPresence, "popgen_bombus_CrithidiaPresence")
 
-summary(bombus.CrithidiaPresence)
+checked.bombus.CrithidiaPresence <-
+  check_brms(bombus.CrithidiaPresence)
+
+testDispersion(checked.bombus.CrithidiaPresence)
 
 bayes_R2(bombus.CrithidiaPresence)
 
@@ -112,7 +114,7 @@ bombus.ApicystisSpp <- brm(par.formulas$SpApicystisSpp,
                         bombus,
                         cores=ncores,
                         iter = 10^4,
-                        chains =3,
+                        chains =1,
                         thin=1,
                         init=0,
                         open_progress = FALSE,
@@ -128,7 +130,10 @@ load(file="saved/popgen_bombus_ApicystisSpp.Rdata")
 
 plot.res(bombus.ApicystisSpp, "popgen_bombus_ApicystisSpp")
 
-summary(bombus.ApicystisSpp)
+checked.bombus.ApicystisSpp <-
+  check_brms(bombus.ApicystisSpp)
+
+testDispersion(checked.bombus.ApicystisSpp)
 
 bayes_R2(bombus.ApicystisSpp)
 

@@ -1,19 +1,20 @@
 library(stringr)
-library(dplyr)
-library(ggplot2)
+library(tidyverse)
 rm(list=ls())
 setwd("~/University of Oregon Dropbox/Lauren Ponisio/")
 setwd("parasite_networks_saved")
 source("../parasite_networks/src/CalcMetrics.R")
 source("../parasite_networks/src/SpCalcMetrics.R")
 source("../parasite_networks/src/vaznull2.R")
+source("../parasite_networks/src/misc.R")
 
+pnw.subprojects <- read.csv("stands.csv")
 ## ********************************************************
 ## Parasite prevalence
 ## ********************************************************
 par.files <- file.path("screenings", list.files("screenings"))
 par.files
-
+s
 load(par.files[[1]])
 hja.par <- all.sums
 
@@ -79,6 +80,20 @@ dim(par.mets)
 par.mets <- merge(par.mets, sampling, key="Project")
 dim(par.mets)
 
+par.mets$SubProject <- ""
+par.mets$SubProject <- pnw.subprojects$SubProject[match(par.mets$Site,
+                                                        pnw.subprojects$StandCode)]
+par.mets$SubProject[is.na(par.mets$SubProject)] <- ""
+
+## Remove bombus nest data
+par.mets <- par.mets[par.mets$SubProject != "OR-NEST",]
+
+par.mets$ProjectSubProject <- fix.white.space(paste(par.mets$Project,
+                                    par.mets$SubProject, sep="-"))
+
+par.mets$ProjectSubProject[par.mets$SubProject == ""] <-
+  par.mets$Project[par.mets$SubProject == ""]
+
 save(par.mets,
      file="../parasite_networks/data/sp_genus_site_mets.RData")
 
@@ -113,7 +128,7 @@ all.nets <- all.nets[apply(sapply(all.nets, dim) > 2, 2, all)]
 
 load(file="../parasite_networks/data/raw_mets.RData")
 
-cols.to.keep <- c("Project", "Year", "SampleRound", "SurveyMin",
+cols.to.keep <- c("Project", "ProjectSubProject", "Year", "SampleRound", "SurveyMin",
                   colnames(par.mets)[grep("Site",
                                           colnames(par.mets))],
                   colnames(par.mets)[grep("Genus",
@@ -126,7 +141,6 @@ cols.to.keep <- cols.to.keep[cols.to.keep != "GenusSpecies" &
 network.metrics <- prepDat(mets,  par.mets,
                     cols.to.keep=cols.to.keep,
                     net.type="YearSR")
-
 
 network.metrics$GenusRelativeAbundance <-
  log(network.metrics$GenusAbundance/network.metrics$SurveyMin)
@@ -145,17 +159,17 @@ save(network.metrics,
 ## *****************************************************
 
 N <- 99
-sp.mets <- lapply(all.nets, SpCalcNetworkMetrics,
-               N=N, index=c("closeness", "betweenness",
-                            "degree", "d",
-                            "nestedrank",
-                            "proportional generality"))
-save(sp.mets,
-     file="../parasite_networks/data/raw_sp_mets.RData")
+## sp.mets <- lapply(all.nets, SpCalcNetworkMetrics,
+##                N=N, index=c("closeness", "betweenness",
+##                             "degree", "d",
+##                             "nestedrank",
+##                             "proportional generality"))
+## save(sp.mets,
+##      file="../parasite_networks/data/raw_sp_mets.RData")
 
 load(file="../parasite_networks/data/raw_sp_mets.RData")
 
-cols.to.keep <- unique(c("Project", "Year",
+cols.to.keep <- unique(c("Project", "ProjectSubProject", "Year",
                          "SampleRound",
                          "Site",
                          "SiteBeeAbundance",
@@ -186,6 +200,7 @@ sp.network.metrics$SiteRelativeBeeDiversity <-
  log(sp.network.metrics$SiteBeeDiversity/sp.network.metrics$SurveyMin)
 
 
+
 save(sp.network.metrics,
      file="../parasite_networks/data/sp_mets.RData")
 
@@ -210,8 +225,6 @@ SI.popgen
 SI.popgen <- SI.popgen %>%
   pivot_wider(names_from = Metric, values_from = Value)
 SI.popgen
-
-
 
 save(SI.popgen,
      file="../parasite_networks/data/SI_popgen.RData")

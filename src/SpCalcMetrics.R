@@ -101,7 +101,7 @@ SpPrepDat <- function(cor.stats, spec.dat,
   
   colnames(site.dats)[colnames(site.dats) %in% colnames(out)]
   print(dim(out))
-  net.mets <- merge(out, site.dats, all.x=TRUE)
+  net.mets <- merge(out, site.dats, all.xy=TRUE)
   
   print(dim(net.mets))
   rownames(net.mets) <- NULL
