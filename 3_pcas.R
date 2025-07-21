@@ -13,7 +13,8 @@ net.cols <- c("zweighted.betweenness",
               "zweighted.closeness",
               "zd", "znestedrank",
               "proportional.generality",
-              "zdegree")
+              "zdegree",
+              "HBOverlap")
 
 fin.cols <- !is.na(sp.network.metrics[, net.cols])
 keep.rows <- apply(fin.cols, 1, function(x) all(x))

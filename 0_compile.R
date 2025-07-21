@@ -9,12 +9,13 @@ source("../parasite_networks/src/vaznull2.R")
 source("../parasite_networks/src/misc.R")
 
 pnw.subprojects <- read.csv("stands.csv")
+
 ## ********************************************************
 ## Parasite prevalence
 ## ********************************************************
 par.files <- file.path("screenings", list.files("screenings"))
 par.files
-s
+
 load(par.files[[1]])
 hja.par <- all.sums
 
@@ -50,6 +51,9 @@ syrphid.genera <- c("Eristalis", "Eristalinus",
                     "Paragus", "Syritta", "Syrphus", "Toxomerus",
                     "Eupeodes", "Allograpta", "Melanostoma",
                     "Sphaerophoria", "Erynnis")
+
+syrphids <- data.frame(par.mets[par.mets$Genus %in% syrphid.genera &
+                                par.mets$SpScreened > 0,])
 
 par.mets <- par.mets[!par.mets$Genus %in% syrphid.genera,]
 
@@ -116,19 +120,22 @@ nets.sf <- nets
 load(net.files[[4]])
 nets.si <- nets
 
-N <-  99
+## Combine networks
 all.nets <- c(nets.pnw, nets.sf, nets.si, nets.hja)
 all.nets <- all.nets[apply(sapply(all.nets, dim) > 2, 2, all)]
 
-## mets <- lapply(all.nets, calcNetworkMetrics,
-##                N=N)
+## Calc network metrics
+N <-  99
+mets <- lapply(all.nets, calcNetworkMetrics,
+               N=N)
 
-## save(mets,
-##      file="../parasite_networks/data/raw_mets.RData")
+save(mets,
+     file="../parasite_networks/data/raw_mets.RData")
 
 load(file="../parasite_networks/data/raw_mets.RData")
 
-cols.to.keep <- c("Project", "ProjectSubProject", "Year", "SampleRound", "SurveyMin",
+cols.to.keep <- c("Project", "ProjectSubProject", "Year",
+                  "SampleRound", "SurveyMin",
                   colnames(par.mets)[grep("Site",
                                           colnames(par.mets))],
                   colnames(par.mets)[grep("Genus",
@@ -159,13 +166,11 @@ save(network.metrics,
 ## *****************************************************
 
 N <- 99
-## sp.mets <- lapply(all.nets, SpCalcNetworkMetrics,
-##                N=N, index=c("closeness", "betweenness",
-##                             "degree", "d",
-##                             "nestedrank",
-##                             "proportional generality"))
-## save(sp.mets,
-##      file="../parasite_networks/data/raw_sp_mets.RData")
+sp.mets <- lapply(all.nets, SpCalcNetworkMetrics,
+               N=N, index=c("closeness", "betweenness",
+                            "degree", "d"))
+save(sp.mets,
+     file="../parasite_networks/data/raw_sp_mets.RData")
 
 load(file="../parasite_networks/data/raw_sp_mets.RData")
 
@@ -198,8 +203,6 @@ sp.network.metrics$SiteRelativeBeeAbundance <-
 
 sp.network.metrics$SiteRelativeBeeDiversity <-
  log(sp.network.metrics$SiteBeeDiversity/sp.network.metrics$SurveyMin)
-
-
 
 save(sp.network.metrics,
      file="../parasite_networks/data/sp_mets.RData")

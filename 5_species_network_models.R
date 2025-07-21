@@ -7,21 +7,22 @@ source("src/init.R")
 library(brms)
 library(lme4)
 library(glmmTMB)
-library(performance)
+library(car)
 library(DHARMa)
 
-load(file="data/network_mets.RData")
+load(file="data/sp_mets.RData")
 ncores <- 3
 
-net.cols <- c("connectance",
-              "zweighted.NODF",
-              "zFunRedundancy.Pols",
-              "zH2")
+net.cols <- c("zweighted.betweenness",
+              "zweighted.closeness",
+              "zd",
+              ## "znestedrank",
+              "zdegree")
 
 net.cols.scale <- paste0("scale(", net.cols, ")")
 
-par.cols <- c("GenusApicystisSpp", "GenusCrithidiaPresence",
-              "GenusNosemaBombi", "GenusNosemaCeranae")
+par.cols <- c("SpApicystisSpp", "SpCrithidiaPresence",
+              "SpNosemaBombi", "SpNosemaCeranae")
 
 
 par.formulas <- vector(mode="list", length=length(par.cols))
@@ -30,63 +31,57 @@ names(freq.par.formulas) <- par.cols
 names(par.formulas) <- par.cols
 
 for(par in par.cols){
-  par.formulas[[par]] <- bf(
-    formula(paste0(par, "| trials(GenusScreened)~", 
-                   paste(c(net.cols.scale, "(1|Site)",
-                           "(1|Year)", "ProjectSubProject"),
-                         collapse="+"))),
-    family="zero_inflated_binomial")
+  par.formulas[[par]] <- bf(formula(paste0(par, "| trials(SpScreened)~", 
+                         paste(c(net.cols.scale, "(1|Site)",
+                                 "(1|Year)", "ProjectSubProject",
+                                 "(1|gr(GenusSpecies, cov = phylo_matrix))"),
+                               collapse="+"))), family="zero_inflated_binomial")
 
   freq.par.formulas[[par]] <-
-    formula(paste0("cbind(", par, ", GenusScreened)~", 
+    formula(paste0("cbind(", par, ", SpScreened)~", 
                    paste(c(net.cols.scale,  "(1|Site)", 
-                           "(1|Year)", "ProjectSubProject"),
+                                 "(1|Year)", "(1|Obs)", "ProjectSubProject"),
                          collapse="+")))
 }
 
-network.metrics <- network.metrics[
-  !is.na(network.metrics$ProjectSubProject),]
-network.metrics$Year <- as.factor(network.metrics$Year)
-network.metrics$Site <- as.factor(network.metrics$Site)
-network.metrics$ProjectSubProject <- as.factor(
-  network.metrics$ProjectSubProject)
+
+sp.network.metrics <- sp.network.metrics[!is.na(sp.network.metrics$ProjectSubProject),]
+sp.network.metrics$Obs <- 1:nrow(sp.network.metrics)
+sp.network.metrics$Year <- as.factor(sp.network.metrics$Year)
+sp.network.metrics$Site <- as.factor(sp.network.metrics$Site)
+sp.network.metrics$ProjectSubProject <- as.factor(sp.network.metrics$ProjectSubProject)
 
 ## *******************************************************
 ## Bombus
 ## *******************************************************
 
-bombus <- network.metrics[network.metrics$Genus == "Bombus",]
+bombus <- sp.network.metrics[sp.network.metrics$Genus == "Bombus",]
+load("data/Bombus_phylogeny.Rdata")
+not.in.phylo <- unique(bombus$GenusSpecies[
+  !bombus$GenusSpecies
+  %in%
+  phylo$tip.label])
+not.in.phylo
 
 write.csv(bombus[, c(net.cols, "Site", "Year", "ProjectSubProject",
-                     "GenusScreened",
-                     par.cols)], file="data/bombus_network.csv")
-
-
-sub.bombus <- list(bombus[bombus$ProjectSubProject != "SF",],
-                   bombus,
-                   bombus[bombus$ProjectSubProject != "SI" &
-                          bombus$ProjectSubProject != "PN-CA-FIRE",],
-                   bombus[bombus$ProjectSubProject != "SI" &
-                          bombus$ProjectSubProject != "PN-CA-FIRE",]
-                   )
-
-names(sub.bombus) <- names(freq.par.formulas)
+                     "GenusSpecies", "SpScreened",
+                     par.cols)], file="data/bombus_net.csv")
 
 ## check models
-for(i in names(freq.par.formulas)[1:3]){
-  print(i)
-  mod <- glmmTMB(freq.par.formulas[[i]],
-                 data=sub.bombus[[i]],
-                 family="binomial",
+for(form in freq.par.formulas){
+  print(form)
+  mod <- glmmTMB(form, data=bombus,
+                             family="binomial",
                  ziformula=~1)
   print(summary(mod))
-  print(check_collinearity(mod))
+  ## print(vif(mod))
 }
 
 ## *******************************************************
 
-bombus.CrithidiaPresence <- brm(par.formulas$GenusCrithidiaPresence,
+bombus.CrithidiaPresence <- brm(par.formulas$SpCrithidiaPresence,
                         bombus,
+                        data2=list(phylo_matrix=phylo_matrix),
                         cores=ncores,
                         iter = 10^4,
                         chains =1,
@@ -97,12 +92,11 @@ bombus.CrithidiaPresence <- brm(par.formulas$GenusCrithidiaPresence,
                                        stepsize = 0.001,
                                        max_treedepth = 20))
                   
-write.ms.table(bombus.CrithidiaPresence,
-               "network_bombus_CrithidiaPresence")
+write.ms.table(bombus.CrithidiaPresence, "bombus_CrithidiaPresence")
 save(bombus,bombus.CrithidiaPresence,
-     file="saved/network_bombus_CrithidiaPresence.Rdata")
+     file="saved/bombus_CrithidiaPresence.Rdata")
 
-load(file="saved/network_bombus_CrithidiaPresence.Rdata")
+load(file="saved/bombus_CrithidiaPresence.Rdata")
 
 ## Some outliers, both otherwise looks okay
 checked.bombus.CrithidiaPresence <-
@@ -112,27 +106,28 @@ checked.bombus.CrithidiaPresence <-
 testDispersion(checked.bombus.CrithidiaPresence)
 
 ## Year SD skewed towards zero, otherwise okay
-plot.res(bombus.CrithidiaPresence, "network_bombus_CrithidiaPresence")
+plot.res(bombus.CrithidiaPresence, "bombus_CrithidiaPresence")
 
 ## All rhats and ESS good
 summary(bombus.CrithidiaPresence)
 
-## .67, good
+## .65, good
 bayes_R2(bombus.CrithidiaPresence)
 
 ## Looks good
 plot(pp_check(bombus.CrithidiaPresence,
-              resp="GenusCrithidiaPresence", ndraws=10^3))
+              resp="SpCrithidiaPresence", ndraws=10^3))
 
 ## *******************************************************
 
 ## SF not converging, not very many bombus screened.
 
-bombus.ApicystisSpp <- brm(par.formulas$GenusApicystisSpp,
+bombus.ApicystisSpp <- brm(par.formulas$SpApicystisSpp,
                         bombus[bombus$ProjectSubProject != "SF",],
                         cores=ncores,
                         iter = 10^4,
                         chains =1,
+                        data2=list(phylo_matrix=phylo_matrix),
                         thin=1,
                         init=0,
                         open_progress = FALSE,
@@ -140,11 +135,11 @@ bombus.ApicystisSpp <- brm(par.formulas$GenusApicystisSpp,
                                        stepsize = 0.001,
                                        max_treedepth = 20))
                   
-write.ms.table(bombus.ApicystisSpp, "network_bombus_ApicystisSpp")
+write.ms.table(bombus.ApicystisSpp, "bombus_ApicystisSpp")
 save(bombus, bombus.ApicystisSpp,
-     file="saved/network_bombus_ApicystisSpp.Rdata")
+     file="saved/bombus_ApicystisSpp.Rdata")
 
-load(file="saved/network_bombus_ApicystisSpp.Rdata")
+load(file="saved/bombus_ApicystisSpp.Rdata")
 
 ## looks good!
 checked.bombus.ApicystisSpp <-
@@ -154,12 +149,12 @@ checked.bombus.ApicystisSpp <-
 testDispersion(checked.bombus.ApicystisSpp)
 
 ## ProjectSubProjectSF and Year SD skewed, but otherwise okay
-plot.res(bombus.ApicystisSpp, "network_bombus_ApicystisSpp")
+plot.res(bombus.ApicystisSpp, "bombus_ApicystisSpp")
 
 ## SF had issues, resolved with SF removed
 summary(bombus.ApicystisSpp)
 
-## .76, good
+## .61, good
 bayes_R2(bombus.ApicystisSpp)
 
 ## Looks good
@@ -169,10 +164,10 @@ plot(pp_check(bombus.ApicystisSpp, resp="SpApicystisSpp", ndraws=10^3))
 
 ## SI not converging, very few positives
 
-bombus.NosemaBombi <- brm(par.formulas$GenusNosemaBombi,
-                        bombus[bombus$ProjectSubProject != "SI" &
-                              bombus$ProjectSubProject != "PN-CA-FIRE",],
+bombus.SpNosemaBombi <- brm(par.formulas$SpNosemaBombi,
+                        bombus[bombus$ProjectSubProject != "SI",],
                         cores=ncores,
+                        data2=list(phylo_matrix=phylo_matrix),
                         iter = 10^4,
                         chains =1,
                         thin=1,
@@ -182,64 +177,67 @@ bombus.NosemaBombi <- brm(par.formulas$GenusNosemaBombi,
                                        stepsize = 0.001,
                                        max_treedepth = 20))
                   
-write.ms.table(bombus.NosemaBombi,
-               "network_bombus_NosemaBombi")
-save(bombus,bombus.NosemaBombi,
-     file="saved/network_bombus_NosemaBombi.Rdata")
+write.ms.table(bombus.SpNosemaBombi, "bombus_SpNosemaBombi")
+save(bombus,bombus.SpNosemaBombi,
+     file="saved/bombus_SpNosemaBombi.Rdata")
 
-load(file="saved/network_bombus_NosemaBombi.Rdata")
-
-## good after dropping SI
-checked.bombus.NosemaBombi <-
-  check_brms(bombus.NosemaBombi)
+load(file="saved/bombus_SpNosemaBombi.Rdata")
 
 ## good after dropping SI
-testDispersion(checked.bombus.NosemaBombi)
+checked.bombus.SpNosemaBombi <-
+  check_brms(bombus.SpNosemaBombi)
+
+## good after dropping SI
+testDispersion(checked.bombus.SpNosemaBombi)
 
 ## Random effect SD skewed
-plot.res(bombus.NosemaBombi, "network_bombus_NosemaBombi")
+plot.res(bombus.SpNosemaBombi, "bombus_SpNosemaBombi")
 
 ## Rhat and ESS good
-summary(bombus.NosemaBombi)
+summary(bombus.SpNosemaBombi)
 
 ## .41, good
-bayes_R2(bombus.NosemaBombi)
+bayes_R2(bombus.SpNosemaBombi)
 
 ## Good
-plot(pp_check(bombus.NosemaBombi,
-              resp="GenusNosemaBombi", ndraws=10^3))
+plot(pp_check(bombus.SpNosemaBombi, resp="SpSpNosemaBombi", ndraws=10^3))
 
 ## *******************************************************
 ## Melissodes
 ## *******************************************************
 
-melissodes <- network.metrics[network.metrics$Genus ==
+melissodes <- sp.network.metrics[sp.network.metrics$Genus ==
                                  "Melissodes",]
+load("data/Melissodes_phylogeny.Rdata")
+not.in.phylo <- unique(melissodes$GenusSpecies[
+  !melissodes$GenusSpecies
+  %in%
+  phylo$tip.label])
+not.in.phylo
+
+melissodes <- melissodes[melissodes$GenusSpecies != not.in.phylo,]
 
 
 write.csv(melissodes[, c(net.cols, "Site", "Year", "ProjectSubProject",
-                     "Genus", "GenusScreened",
+                     "GenusSpecies", "SpScreened",
                      par.cols)], file="data/melissodes_net.csv")
 
 
-
-## check models
-for(i in names(freq.par.formulas)[1:2]){
-  print(i)
-  mod <- glmmTMB(freq.par.formulas[[i]],
-                 data=melissodes,
-                 family="binomial",
+## check models, drop Nosemas
+for(form in freq.par.formulas[1:2]){
+  mod <- glmmTMB(form, data=melissodes,
+                             family="binomial",
                  ziformula=~1)
   print(summary(mod))
-  print(check_collinearity(mod))
 }
 
 
 ## *******************************************************
 
-melissodes.CrithidiaPresence <- brm(par.formulas$GenusCrithidiaPresence,
+melissodes.CrithidiaPresence <- brm(par.formulas$SpCrithidiaPresence,
                         melissodes,
                         cores=ncores,
+                        data2=list(phylo_matrix=phylo_matrix),
                         iter = 10^4,
                         chains =1,
                         thin=1,
@@ -249,12 +247,11 @@ melissodes.CrithidiaPresence <- brm(par.formulas$GenusCrithidiaPresence,
                                        stepsize = 0.001,
                                        max_treedepth = 20))
                   
-write.ms.table(melissodes.CrithidiaPresence,
-               "network_melissodes_CrithidiaPresence")
+write.ms.table(melissodes.CrithidiaPresence, "melissodes_CrithidiaPresence")
 save(melissodes, melissodes.CrithidiaPresence,
-     file="saved/network_melissodes_CrithidiaPresence.Rdata")
+     file="saved/melissodes_CrithidiaPresence.Rdata")
 
-load(file="saved/network_melissodes_CrithidiaPresence.Rdata")
+load(file="saved/melissodes_CrithidiaPresence.Rdata")
 
 ## 
 checked.melissodes.CrithidiaPresence <-
@@ -263,21 +260,21 @@ checked.melissodes.CrithidiaPresence <-
 ## 
 testDispersion(melissodes.CrithidiaPresence)
 
-plot.res(melissodes.CrithidiaPresence,
-         "network_melissodes_CrithidiaPresence")
+plot.res(melissodes.CrithidiaPresence, "melissodes_CrithidiaPresence")
 
 summary(melissodes.CrithidiaPresence)
 
 bayes_R2(melissodes.CrithidiaPresence)
 
 plot(pp_check(melissodes.CrithidiaPresence,
-              resp="GenusCrithidiaPresence", ndraws=10^3))
-
+              resp="SpCrithidiaPresence", ndraws=10^3))
+x
 ## *******************************************************
 
-melissodes.ApicystisSpp <- brm(par.formulas$GenusApicystisSpp,
+melissodes.ApicystisSpp <- brm(par.formulas$SpApicystisSpp,
                         melissodes,
                         cores=ncores,
+                        data2=list(phylo_matrix=phylo_matrix),
                         iter = 10^4,
                         chains =1,
                         thin=1,
@@ -287,103 +284,40 @@ melissodes.ApicystisSpp <- brm(par.formulas$GenusApicystisSpp,
                                        stepsize = 0.001,
                                        max_treedepth = 20))
                   
-write.ms.table(melissodes.ApicystisSpp, "network_melissodes_ApicystisSpp")
+write.ms.table(melissodes.ApicystisSpp, "melissodes_ApicystisSpp")
 save(melissodes, melissodes.ApicystisSpp,
-     file="saved/network_melissodes_ApicystisSpp.Rdata")
+     file="saved/melissodes_ApicystisSpp.Rdata")
 
-load(file="saved/network_melissodes_ApicystisSpp.Rdata")
+load(file="saved/melissodes_ApicystisSpp.Rdata")
 
-plot.res(melissodes.ApicystisSpp, "network_melissodes_ApicystisSpp")
+plot.res(melissodes.ApicystisSpp, "melissodes_ApicystisSpp")
 
 summary(melissodes.ApicystisSpp)
 
 bayes_R2(melissodes.ApicystisSpp)
 
-plot(pp_check(melissodes.ApicystisSpp, resp="GenusApicystisSpp", ndraws=10^3))
+plot(pp_check(melissodes.ApicystisSpp, resp="SpApicystisSpp", ndraws=10^3))
 
 ## *******************************************************
 ## Apis
 ## *******************************************************
 
-apis <- network.metrics[network.metrics$Genus == "Apis",]
+apis <- sp.network.metrics[sp.network.metrics$Genus == "Apis",]
 
-apis.sub <- apis[apis$ProjectSubProject != "SF" &
-                apis$ProjectSubProject != "PN-CA-FIRE" &
-                apis$ProjectSubProject != "PN-COAST",]
-                 
-## check models
-for(i in names(freq.par.formulas)[c(1,2,4)]){
-  print(i)
-  mod <- glmmTMB(freq.par.formulas[[i]],
-                 data=apis.sub,
-                 family="binomial",
-                 ziformula=~1)
-  print(summary(mod))
-  print(check_collinearity(mod))
+## Drop phylogeny from models
+par.formulas <- vector(mode="list", length=length(par.cols))
+names(par.formulas) <- par.cols
+for(par in par.cols){
+  par.formulas[[par]] <- bf(formula(paste0(par, "| trials(SpScreened)~", 
+                         paste(c(net.cols.scale, "(1|Site)",
+                                 "(1|Year)", "ProjectSubProject"),
+                               collapse="+"))), family="binomial")
 }
 
-## *******************************************************
-
-apis.CrithidiaPresence <- brm(par.formulas$GenusCrithidiaPresence,
-                        apis.sub,
-                        cores=ncores,
-                        iter = 10^4,
-                        chains =1,
-                        thin=1,
-                        init=0,
-                        open_progress = FALSE,
-                        control = list(adapt_delta = 0.999,
-                                       stepsize = 0.001,
-                                       max_treedepth = 20))
-                  
-write.ms.table(apis.CrithidiaPresence, "network_apis_CrithidiaPresence")
-save(apis, apis.CrithidiaPresence,
-     file="saved/network_apis_CrithidiaPresence.Rdata")
-
-load(file="saved/network_apis_CrithidiaPresence.Rdata")
-
-plot.res(apis.CrithidiaPresence, "network_apis_CrithidiaPresence")
-
-summary(apis.CrithidiaPresence)
-
-## .51
-bayes_R2(apis.CrithidiaPresence)
-
-plot(pp_check(apis.CrithidiaPresence,
-              resp="GenusCrithidiaPresence", ndraws=10^3))
 
 ## *******************************************************
 
-apis.ApicystisSpp <- brm(par.formulas$GenusApicystisSpp,
-                        apis.sub,
-                        cores=ncores,
-                        iter = 10^4,
-                        chains =1,
-                        thin=1,
-                        init=0,
-                        open_progress = FALSE,
-                        control = list(adapt_delta = 0.999,
-                                       stepsize = 0.001,
-                                       max_treedepth = 20))
-                  
-write.ms.table(apis.ApicystisSpp, "network_apis_ApicystisSpp")
-save(apis,apis.ApicystisSpp, 
-     file="saved/network_apis_ApicystisSpp.Rdata")
-
-load(file="saved/network_apis_ApicystisSpp.Rdata")
-
-plot.res(apis.ApicystisSpp, "network_apis_ApicystisSpp")
-
-summary(apis.ApicystisSpp)
-
-## .52
-bayes_R2(apis.ApicystisSpp)
-
-plot(pp_check(apis.ApicystisSpp, resp="GenusApicystisSpp", ndraws=10^3))
-
-## *******************************************************
-
-apis.GenusNosemaCeranae <- brm(par.formulas$GenusNosemaCeranae,
+apis.CrithidiaPresence <- brm(par.formulas$SpCrithidiaPresence,
                         apis[apis$ProjectSubProject != "PN-CA-FIRE",],
                         cores=ncores,
                         iter = 10^4,
@@ -395,18 +329,73 @@ apis.GenusNosemaCeranae <- brm(par.formulas$GenusNosemaCeranae,
                                        stepsize = 0.001,
                                        max_treedepth = 20))
                   
-write.ms.table(apis.GenusNosemaCeranae, "network_apis_GenusNosemaCeranae")
-save(apis,apis.GenusNosemaCeranae,
-     file="saved/network_apis_GenusNosemaCeranae.Rdata")
+write.ms.table(apis.CrithidiaPresence, "apis_CrithidiaPresence")
+save(apis, apis.CrithidiaPresence,
+     file="saved/apis_CrithidiaPresence.Rdata")
 
-load(file="saved/network_apis_GenusNosemaCeranae.Rdata")
+load(file="saved/apis_CrithidiaPresence.Rdata")
 
-plot.res(apis.GenusNosemaCeranae, "network_apis_GenusNosemaCeranae")
+plot.res(apis.CrithidiaPresence, "apis_CrithidiaPresence")
 
-summary(apis.GenusNosemaCeranae)
+summary(apis.CrithidiaPresence)
 
-## .58
-bayes_R2(apis.GenusNosemaCeranae)
+bayes_R2(apis.CrithidiaPresence)
 
-plot(pp_check(apis.GenusNosemaCeranae,
-              resp="GenusNosemaCeranae", ndraws=10^3))
+plot(pp_check(apis.CrithidiaPresence,
+              resp="SpCrithidiaPresence", ndraws=10^3))
+
+## *******************************************************
+
+apis.ApicystisSpp <- brm(par.formulas$SpApicystisSpp,
+                        apis[apis$ProjectSubProject != "PN-CA-FIRE",],
+                        cores=ncores,
+                        iter = 10^4,
+                        chains =1,
+                        thin=1,
+                        init=0,
+                        open_progress = FALSE,
+                        control = list(adapt_delta = 0.999,
+                                       stepsize = 0.001,
+                                       max_treedepth = 20))
+                  
+write.ms.table(apis.ApicystisSpp, "apis_ApicystisSpp")
+save(apis,apis.ApicystisSpp, 
+     file="saved/apis_ApicystisSpp.Rdata")
+
+load(file="saved/apis_ApicystisSpp.Rdata")
+
+plot.res(apis.ApicystisSpp, "apis_ApicystisSpp")
+
+summary(apis.ApicystisSpp)
+
+bayes_R2(apis.ApicystisSpp)
+
+plot(pp_check(apis.ApicystisSpp, resp="SpApicystisSpp", ndraws=10^3))
+
+## *******************************************************
+
+apis.SpNosemaCeranae <- brm(par.formulas$SpNosemaCeranae,
+                        apis[apis$ProjectSubProject != "PN-CA-FIRE",],
+                        cores=ncores,
+                        iter = 10^4,
+                        chains =1,
+                        thin=1,
+                        init=0,
+                        open_progress = FALSE,
+                        control = list(adapt_delta = 0.999,
+                                       stepsize = 0.001,
+                                       max_treedepth = 20))
+                  
+write.ms.table(apis.SpNosemaCeranae, "apis_SpNosemaCeranae")
+save(apis,apis.SpNosemaCeranae,
+     file="saved/apis_SpNosemaCeranae.Rdata")
+
+load(file="saved/apis_SpNosemaCeranae.Rdata")
+
+plot.res(apis.SpNosemaCeranae, "apis_SpNosemaCeranae")
+
+summary(apis.SpNosemaCeranae)
+
+bayes_R2(apis.SpNosemaCeranae)
+
+plot(pp_check(apis.SpNosemaCeranae, resp="SpSpNosemaCeranae", ndraws=10^3))
