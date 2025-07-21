@@ -13,12 +13,33 @@ library(DHARMa)
 load(file="data/network_mets.RData")
 ncores <- 3
 
+
+network.metrics <- network.metrics[
+  !is.na(network.metrics$ProjectSubProject),]
+network.metrics$Year <- as.factor(network.metrics$Year)
+network.metrics$Site <- as.factor(network.metrics$Site)
+network.metrics$ProjectSubProject <- as.factor(
+  network.metrics$ProjectSubProject)
+
 net.cols <- c("connectance",
               "zweighted.NODF",
-              "zFunRedundancy.Pols",
-              "zH2")
+              "zH2",
+              "zweighted.cluster.coefficient.HL")
 
 net.cols.scale <- paste0("scale(", net.cols, ")")
+
+par.cols <- c("GenusApicystisSpp", "GenusCrithidiaPresence",
+              "GenusNosemaBombi", "GenusNosemaCeranae")
+
+
+par.formulas <- vector(mode="list", length=length(par.cols))
+freq.par.formulas <- vector(mode="list", length=length(par.cols))
+names(freq.par.formulas) <- par.cols
+names(par.formulas) <- par.cols
+
+## *******************************************************
+## Genus Specific models
+## *******************************************************
 
 par.cols <- c("GenusApicystisSpp", "GenusCrithidiaPresence",
               "GenusNosemaBombi", "GenusNosemaCeranae")
@@ -32,24 +53,21 @@ names(par.formulas) <- par.cols
 for(par in par.cols){
   par.formulas[[par]] <- bf(
     formula(paste0(par, "| trials(GenusScreened)~", 
-                   paste(c(net.cols.scale, "(1|Site)",
-                           "(1|Year)", "ProjectSubProject"),
+                   paste(c(net.cols.scale,
+                           "(1|Site)",
+                           "(1|Year)",
+                           "ProjectSubProject"),
                          collapse="+"))),
     family="zero_inflated_binomial")
 
   freq.par.formulas[[par]] <-
     formula(paste0("cbind(", par, ", GenusScreened)~", 
-                   paste(c(net.cols.scale,  "(1|Site)", 
-                           "(1|Year)", "ProjectSubProject"),
+                   paste(c(net.cols.scale,
+                           "(1|Site)", 
+                           "(1|Year)",
+                           "ProjectSubProject"),
                          collapse="+")))
 }
-
-network.metrics <- network.metrics[
-  !is.na(network.metrics$ProjectSubProject),]
-network.metrics$Year <- as.factor(network.metrics$Year)
-network.metrics$Site <- as.factor(network.metrics$Site)
-network.metrics$ProjectSubProject <- as.factor(
-  network.metrics$ProjectSubProject)
 
 ## *******************************************************
 ## Bombus
@@ -61,16 +79,17 @@ write.csv(bombus[, c(net.cols, "Site", "Year", "ProjectSubProject",
                      "GenusScreened",
                      par.cols)], file="data/bombus_network.csv")
 
+## There aren't enough screenings in SI for Apicystis or Crithidia
+## model to run. 
 
-sub.bombus <- list(bombus[bombus$ProjectSubProject != "SF",],
-                   bombus,
-                   bombus[bombus$ProjectSubProject != "SI" &
-                          bombus$ProjectSubProject != "PN-CA-FIRE",],
-                   bombus[bombus$ProjectSubProject != "SI" &
-                          bombus$ProjectSubProject != "PN-CA-FIRE",]
-                   )
-
-names(sub.bombus) <- names(freq.par.formulas)
+sub.bombus <- list(
+  GenusApicystisSpp=bombus[bombus$ProjectSubProject != "SF",], 
+  GenusCrithidiaPresence=bombus[bombus$ProjectSubProject != "SF",],
+  GenusNosemaBombi= bombus[bombus$ProjectSubProject != "SI" &
+                           bombus$ProjectSubProject != "PN-CA-FIRE",],
+  GenusNosemaCeranae=bombus[bombus$ProjectSubProject != "SI" &
+                            bombus$ProjectSubProject != "PN-CA-FIRE",]
+)
 
 ## check models
 for(i in names(freq.par.formulas)[1:3]){
@@ -86,7 +105,7 @@ for(i in names(freq.par.formulas)[1:3]){
 ## *******************************************************
 
 bombus.CrithidiaPresence <- brm(par.formulas$GenusCrithidiaPresence,
-                        bombus,
+                        bombus[bombus$ProjectSubProject != "SF",],
                         cores=ncores,
                         iter = 10^4,
                         chains =1,

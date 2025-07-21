@@ -11,10 +11,9 @@ load(file="../parasite_networks/data/sp_mets.RData")
 
 net.cols <- c("zweighted.betweenness",
               "zweighted.closeness",
-              "zd", "znestedrank",
-              "proportional.generality",
+              "zd",
               "zdegree",
-              "HBOverlap")
+              "zHBOverlap")
 
 fin.cols <- !is.na(sp.network.metrics[, net.cols])
 keep.rows <- apply(fin.cols, 1, function(x) all(x))

@@ -124,13 +124,12 @@ nets.si <- nets
 all.nets <- c(nets.pnw, nets.sf, nets.si, nets.hja)
 all.nets <- all.nets[apply(sapply(all.nets, dim) > 2, 2, all)]
 
-## Calc network metrics
-N <-  99
-mets <- lapply(all.nets, calcNetworkMetrics,
-               N=N)
-
-save(mets,
-     file="../parasite_networks/data/raw_mets.RData")
+## ## Calc network metrics
+## N <-  99
+## mets <- lapply(all.nets, calcNetworkMetrics,
+##                N=N)
+## save(mets,
+##      file="../parasite_networks/data/raw_mets.RData")
 
 load(file="../parasite_networks/data/raw_mets.RData")
 
@@ -165,12 +164,12 @@ save(network.metrics,
 ## Species level metrics
 ## *****************************************************
 
-N <- 99
-sp.mets <- lapply(all.nets, SpCalcNetworkMetrics,
-               N=N, index=c("closeness", "betweenness",
-                            "degree", "d"))
-save(sp.mets,
-     file="../parasite_networks/data/raw_sp_mets.RData")
+## N <- 99
+## sp.mets <- lapply(all.nets, SpCalcNetworkMetrics,
+##                N=N, index=c("closeness", "betweenness",
+##                             "degree", "d"))
+## save(sp.mets,
+##      file="../parasite_networks/data/raw_sp_mets.RData")
 
 load(file="../parasite_networks/data/raw_sp_mets.RData")
 
