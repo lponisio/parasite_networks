@@ -70,7 +70,8 @@ calcNetworkMetrics <- function(dat.web, N,
                                         "functional complementarity",
                                         "weighted NODF",
                                         "number of species",
-                                        "H2")) {
+                                        "H2",
+                                        "connectance")) {
     ## calculate pvalues
     pvals <- function(stats, nnull){
         rowSums(stats >= stats[, rep(1, ncol(stats))])/(nnull + 1)

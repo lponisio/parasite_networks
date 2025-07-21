@@ -7,7 +7,9 @@ library(bipartite, quietly = TRUE)
 SpCalcNullStat <- function(dat.web,
                          null.fun,...) {
     sim.web <- null.fun(dat.web)
-    out.met <- specieslevel(sim.web,...)
+    colnames(sim.web) <- colnames(dat.web)
+    rownames(sim.web) <- rownames(dat.web)
+    out.met <- spLevelWrap(sim.web,...)
     return(out.met)
 }
 
@@ -41,6 +43,31 @@ calcZvals <- function(sp.level, true.stats, null.stats){
   return(out.mets)
 }
 
+
+honeybeeOverlap <- function(web){
+  ## web with pollinators as columns, plants as rows
+  if("Apis mellifera" %in% colnames(web)){
+    int.dist <- vegdist(t(web), method = "chao")
+    int.sim <- 1 - as.matrix(int.dist)
+    overlap <- int.sim["Apis mellifera", ]
+  } else{
+    overlap <- rep(0, length(colnames(web)))
+    names(overlap) <- colnames(web)
+                 
+  }
+  return(overlap)
+}
+
+
+spLevelWrap <- function(sim.web, ...){
+  sp.lev <- specieslevel(sim.web,...)
+  overlap <- honeybeeOverlap(sim.web)
+  sp.lev$'higher level'$HBOverlap <- overlap
+  sp.lev$'lower level'$HBOverlap <- NA
+  return(sp.lev)
+}
+
+
 ##  function that computes summary statistics on simulated null matrices
 ##  (nulls simulated from web N times)
 SpCalcNetworkMetrics <- function(dat.web, N,
@@ -59,13 +86,17 @@ SpCalcNetworkMetrics <- function(dat.web, N,
                                             index=index, level="both", ...),
                                simplify=FALSE)
         ## calculate metrics from data
-        true.stat <- specieslevel(dat.web,
+        true.stat <- spLevelWrap(dat.web,
                                 index=index, level="both", ...)
 
-      mets.hl <- calcZvals("higher level", true.stat, null.stat)
+      ## hb.overlap <- honeybeeOverlap(dat.web)
+
+      mets.hl <- calcZvals("higher level", true.stat, null.stat)      
       mets.ll <- calcZvals("lower level", true.stat, null.stat)
       
       out <- rbind(mets.hl, mets.ll)
+      ## out$HBOverlap <- hb.overlap[match(out$GenusSpecies, names(hb.overlap))]
+      
       return(out)
 
 
