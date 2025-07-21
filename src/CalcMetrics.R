@@ -3,54 +3,55 @@ library(bipartite, quietly = TRUE)
 library(SYNCSA, quietly = TRUE)
 
 calcMetric <- function(dat.web, ...) {
-    mets <-  my.networklevel(dat.web, ...)
-    mets.group <- grouplevel(dat.web, index=c("mean number of links",
-                                         "weighted cluster coefficient"))
-    
-    mets <- c(mets, mets.group)
-    ## the functional redundancy function takes a matrix of sites and
-    ## species, and a trait matrix whwere the rownames of the traits
-    ## match the column names of the site by species matric. In our
-    ## case, the plants and pollinators are the "species"
-    ## respectively, and their traits are their interaction partners.
+  mets <-  my.networklevel(dat.web, weighted=TRUE, ...)
+  mets.group <- grouplevel(dat.web, weighted=TRUE,
+                           index=c("mean number of links",
+                                   "weighted cluster coefficient"))
+  
+  mets <- c(mets, mets.group)
+  ## the functional redundancy function takes a matrix of sites and
+  ## species, and a trait matrix whwere the rownames of the traits
+  ## match the column names of the site by species matric. In our
+  ## case, the plants and pollinators are the "species"
+  ## respectively, and their traits are their interaction partners.
 
-    ## create names for later use in site x species matrix
-    rownames(dat.web) <- 1:nrow(dat.web)
-    colnames(dat.web) <- 1:ncol(dat.web)
+  ## create names for later use in site x species matrix
+  rownames(dat.web) <- 1:nrow(dat.web)
+  colnames(dat.web) <- 1:ncol(dat.web)
 
-    ## site by species matrix where there is only one "site" since the
-    ## networks are site specific, and the columns are the
-    ## species.
+  ## site by species matrix where there is only one "site" since the
+  ## networks are site specific, and the columns are the
+  ## species.
 
-    ## abundance weighted site by species matrices
-    plants <- matrix(rowSums(dat.web),  nrow=1)
-    pols <- matrix(colSums(dat.web),  nrow=1)
+  ## abundance weighted site by species matrices
+  plants <- matrix(rowSums(dat.web),  nrow=1)
+  pols <- matrix(colSums(dat.web),  nrow=1)
 
-    colnames(plants) <- rownames(dat.web)
-    colnames(pols) <- colnames(dat.web)
-    rownames(plants) <- "Plants"
-    rownames(pols) <- "Pols"
+  colnames(plants) <- rownames(dat.web)
+  colnames(pols) <- colnames(dat.web)
+  rownames(plants) <- "Plants"
+  rownames(pols) <- "Pols"
 
-    ## pull out Functional redundancy score based on: de Bello, F.;
-    ## Leps, J.; Lavorel, S. & Moretti, M. (2007). Importance of
-    ## species abundance for assessment of trait composition: an
-    ## example based on pollinator communities. Community Ecology, 8,
-    ## 163:170. and functional complementarity score based on Rao,
-    ## C.R. (1982). Diversity and dissimilarity coefficients: a
-    ## unified approach. Theoretical Population Biology, 21, 24:43.
+  ## pull out Functional redundancy score based on: de Bello, F.;
+  ## Leps, J.; Lavorel, S. & Moretti, M. (2007). Importance of
+  ## species abundance for assessment of trait composition: an
+  ## example based on pollinator communities. Community Ecology, 8,
+  ## 163:170. and functional complementarity score based on Rao,
+  ## C.R. (1982). Diversity and dissimilarity coefficients: a
+  ## unified approach. Theoretical Population Biology, 21, 24:43.
 
-    redund.plant <- unlist(rao.diversity(plants,
-                                         traits=
-                                             dat.web)[c("FunRao",
-                                                        "FunRedundancy")])
-    redund.pol <- unlist(rao.diversity(pols,
+  redund.plant <- unlist(rao.diversity(plants,
                                        traits=
-                                           t(dat.web))[c("FunRao",
-                                                         "FunRedundancy")])
+                                         dat.web)[c("FunRao",
+                                                    "FunRedundancy")])
+  redund.pol <- unlist(rao.diversity(pols,
+                                     traits=
+                                       t(dat.web))[c("FunRao",
+                                                     "FunRedundancy")])
 
-    return(c(mets,
-             redund.plant,
-             redund.pol))
+  return(c(mets,
+           redund.plant,
+           redund.pol))
 
 }
 

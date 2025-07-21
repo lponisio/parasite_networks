@@ -105,7 +105,7 @@ for(i in names(freq.par.formulas)[1:3]){
 ## *******************************************************
 
 bombus.CrithidiaPresence <- brm(par.formulas$GenusCrithidiaPresence,
-                        bombus[bombus$ProjectSubProject != "SF",],
+                        sub.bombus$GenusCrithidiaPresence
                         cores=ncores,
                         iter = 10^4,
                         chains =1,
@@ -148,7 +148,7 @@ plot(pp_check(bombus.CrithidiaPresence,
 ## SF not converging, not very many bombus screened.
 
 bombus.ApicystisSpp <- brm(par.formulas$GenusApicystisSpp,
-                        bombus[bombus$ProjectSubProject != "SF",],
+                        sub.bombus$GenusApicystisSpp,
                         cores=ncores,
                         iter = 10^4,
                         chains =1,
@@ -189,8 +189,7 @@ plot(pp_check(bombus.ApicystisSpp, resp="SpApicystisSpp", ndraws=10^3))
 ## SI not converging, very few positives
 
 bombus.NosemaBombi <- brm(par.formulas$GenusNosemaBombi,
-                        bombus[bombus$ProjectSubProject != "SI" &
-                              bombus$ProjectSubProject != "PN-CA-FIRE",],
+                        sub.bombus$GenusNosemaBombi,
                         cores=ncores,
                         iter = 10^4,
                         chains =1,
@@ -326,8 +325,7 @@ plot(pp_check(melissodes.ApicystisSpp, resp="GenusApicystisSpp", ndraws=10^3))
 
 apis <- network.metrics[network.metrics$Genus == "Apis",]
 
-apis.sub <- apis[apis$ProjectSubProject != "SF" &
-                apis$ProjectSubProject != "PN-CA-FIRE" &
+apis.sub <- apis[apis$ProjectSubProject != "PN-CA-FIRE" &
                 apis$ProjectSubProject != "PN-COAST",]
                  
 ## check models

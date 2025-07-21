@@ -16,8 +16,8 @@ ncores <- 3
 net.cols <- c("zweighted.betweenness",
               "zweighted.closeness",
               "zd",
-              ## "znestedrank",
-              "zdegree")
+              "zdegree",
+              "zHBOverlap")
 
 net.cols.scale <- paste0("scale(", net.cols, ")")
 
@@ -32,15 +32,16 @@ names(par.formulas) <- par.cols
 
 for(par in par.cols){
   par.formulas[[par]] <- bf(formula(paste0(par, "| trials(SpScreened)~", 
-                         paste(c(net.cols.scale, "(1|Site)",
-                                 "(1|Year)", "ProjectSubProject",
-                                 "(1|gr(GenusSpecies, cov = phylo_matrix))"),
-                               collapse="+"))), family="zero_inflated_binomial")
+                                           paste(c(net.cols.scale, "(1|Site)",
+                                                   "(1|Year)", "ProjectSubProject",
+                                                   "(1|gr(GenusSpecies, cov = phylo_matrix))"),
+                                                 collapse="+"))), family="zero_inflated_binomial")
 
   freq.par.formulas[[par]] <-
     formula(paste0("cbind(", par, ", SpScreened)~", 
                    paste(c(net.cols.scale,  "(1|Site)", 
-                                 "(1|Year)", "(1|Obs)", "ProjectSubProject"),
+                           "(1|Year)", "ProjectSubProject",
+                           "(1|Obs"),
                          collapse="+")))
 }
 
@@ -65,22 +66,37 @@ not.in.phylo
 
 write.csv(bombus[, c(net.cols, "Site", "Year", "ProjectSubProject",
                      "GenusSpecies", "SpScreened",
-                     par.cols)], file="data/bombus_net.csv")
+                     par.cols)], file="data/bombus_Spnet.csv")
+
+
+## There aren't enough screenings in SI for Apicystis or Crithidia
+## model to run. 
+
+sub.bombus <- list(
+  SpApicystisSpp=bombus[bombus$ProjectSubProject != "SF",], 
+  SpCrithidiaPresence=bombus[bombus$ProjectSubProject != "SF",],
+  SpNosemaBombi= bombus[bombus$ProjectSubProject != "SI" &
+                        bombus$ProjectSubProject != "PN-CA-FIRE",],
+  SpNosemaCeranae=bombus[bombus$ProjectSubProject != "SI" &
+                         bombus$ProjectSubProject != "PN-CA-FIRE",]
+)
+
 
 ## check models
-for(form in freq.par.formulas){
-  print(form)
-  mod <- glmmTMB(form, data=bombus,
-                             family="binomial",
+for(i in names(freq.par.formulas)[1:3]){
+  print(i)
+  mod <- glmmTMB(freq.par.formulas[[i]],
+                 data=sub.bombus[[i]],
+                 family="binomial",
                  ziformula=~1)
   print(summary(mod))
-  ## print(vif(mod))
+  ##  print(check_collinearity(mod))
 }
 
 ## *******************************************************
 
 bombus.CrithidiaPresence <- brm(par.formulas$SpCrithidiaPresence,
-                        bombus,
+                        sub.bombus$SpCrithidiaPresence,
                         data2=list(phylo_matrix=phylo_matrix),
                         cores=ncores,
                         iter = 10^4,
@@ -123,7 +139,7 @@ plot(pp_check(bombus.CrithidiaPresence,
 ## SF not converging, not very many bombus screened.
 
 bombus.ApicystisSpp <- brm(par.formulas$SpApicystisSpp,
-                        bombus[bombus$ProjectSubProject != "SF",],
+                        sub.bombus$SpApicystisSpp,
                         cores=ncores,
                         iter = 10^4,
                         chains =1,
@@ -309,7 +325,7 @@ par.formulas <- vector(mode="list", length=length(par.cols))
 names(par.formulas) <- par.cols
 for(par in par.cols){
   par.formulas[[par]] <- bf(formula(paste0(par, "| trials(SpScreened)~", 
-                         paste(c(net.cols.scale, "(1|Site)",
+                         paste(c(net.cols.scale[-"HBOverlap"], "(1|Site)",
                                  "(1|Year)", "ProjectSubProject"),
                                collapse="+"))), family="binomial")
 }
