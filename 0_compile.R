@@ -76,7 +76,7 @@ par.mets$PropSpApicystisSpp <-
   par.mets$SpApicystisSpp/par.mets$SpScreened
 
 sampling <- data.frame(
-  Project = c("PN", "SI", "SF", "HJ"),
+  Project = c("PN", "SI", "SF", "HJA"),
   SurveyMin =c(70, 600, 90, 100)
 )
 
@@ -97,6 +97,21 @@ par.mets$ProjectSubProject <- fix.white.space(paste(par.mets$Project,
 
 par.mets$ProjectSubProject[par.mets$SubProject == ""] <-
   par.mets$Project[par.mets$SubProject == ""]
+
+## to check over data that needs to be dropped
+hja.2024 <- par.mets %>% 
+     filter((Project == "HJA" & Year == 2024))
+     
+
+dim(par.mets)
+par.mets <- par.mets %>% 
+  filter(!(Project == "HJA" & Year == 2024))
+dim(par.mets)
+
+
+par.mets$NetworkKey <- paste(par.mets$Site, par.mets$Year,
+                             par.mets$SampleRound, sep=".")
+
 
 save(par.mets,
      file="../parasite_networks/data/sp_genus_site_mets.RData")
@@ -124,12 +139,19 @@ nets.si <- nets
 all.nets <- c(nets.pnw, nets.sf, nets.si, nets.hja)
 all.nets <- all.nets[apply(sapply(all.nets, dim) > 2, 2, all)]
 
-## ## Calc network metrics
-## N <-  99
-## mets <- lapply(all.nets, calcNetworkMetrics,
-##                N=N)
-## save(mets,
-##      file="../parasite_networks/data/raw_mets.RData")
+length(all.nets)
+all.nets <- all.nets[names(all.nets) %in% par.mets$NetworkKey]
+length(all.nets)
+
+save(all.nets,
+     file="../parasite_networks/data/allNets.RData")
+
+## Calc network metrics
+N <-  99
+mets <- lapply(all.nets, calcNetworkMetrics,
+               N=N)
+save(mets,
+     file="../parasite_networks/data/raw_mets.RData")
 
 load(file="../parasite_networks/data/raw_mets.RData")
 
@@ -164,12 +186,12 @@ save(network.metrics,
 ## Species level metrics
 ## *****************************************************
 
-## N <- 99
-## sp.mets <- lapply(all.nets, SpCalcNetworkMetrics,
-##                N=N, index=c("closeness", "betweenness",
-##                             "degree", "d"))
-## save(sp.mets,
-##      file="../parasite_networks/data/raw_sp_mets.RData")
+N <- 99
+sp.mets <- lapply(all.nets, SpCalcNetworkMetrics,
+               N=N, index=c("closeness", "betweenness",
+                            "degree", "d"))
+save(sp.mets,
+     file="../parasite_networks/data/raw_sp_mets.RData")
 
 load(file="../parasite_networks/data/raw_sp_mets.RData")
 

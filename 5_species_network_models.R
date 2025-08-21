@@ -21,8 +21,8 @@ net.cols <- c("zweighted.betweenness",
 
 net.cols.scale <- paste0("scale(", net.cols, ")")
 
-par.cols <- c("SpApicystisSpp", "SpCrithidiaPresence",
-              "SpNosemaBombi", "SpNosemaCeranae")
+par.cols <- c("SpApicystisSpp", "SpCrithidiaPresence")
+           ##   "SpNosemaBombi", "SpNosemaCeranae")
 
 
 par.formulas <- vector(mode="list", length=length(par.cols))
@@ -40,8 +40,7 @@ for(par in par.cols){
   freq.par.formulas[[par]] <-
     formula(paste0("cbind(", par, ", SpScreened)~", 
                    paste(c(net.cols.scale,  "(1|Site)", 
-                           "(1|Year)", "ProjectSubProject",
-                           "(1|Obs"),
+                           "(1|Year)", "ProjectSubProject"),
                          collapse="+")))
 }
 
@@ -57,6 +56,11 @@ sp.network.metrics$ProjectSubProject <- as.factor(sp.network.metrics$ProjectSubP
 ## *******************************************************
 
 bombus <- sp.network.metrics[sp.network.metrics$Genus == "Bombus",]
+
+## vancouverensis was previously known as bifarius, change to match
+## pylogeny before name change
+bombus$GenusSpecies[bombus$GenusSpecies == "Bombus vancouverensis"] <- "Bombus bifarius"
+
 load("data/Bombus_phylogeny.Rdata")
 not.in.phylo <- unique(bombus$GenusSpecies[
   !bombus$GenusSpecies
@@ -73,8 +77,10 @@ write.csv(bombus[, c(net.cols, "Site", "Year", "ProjectSubProject",
 ## model to run. 
 
 sub.bombus <- list(
-  SpApicystisSpp=bombus[bombus$ProjectSubProject != "SF",], 
-  SpCrithidiaPresence=bombus[bombus$ProjectSubProject != "SF",],
+  SpApicystisSpp=bombus[bombus$ProjectSubProject != "SF" &
+                        bombus$ProjectSubProject != "PN-CA-FIRE",], 
+  SpCrithidiaPresence=bombus[bombus$ProjectSubProject != "SF" &
+                            bombus$ProjectSubProject != "PN-CA-FIRE",],
   SpNosemaBombi= bombus[bombus$ProjectSubProject != "SI" &
                         bombus$ProjectSubProject != "PN-CA-FIRE",],
   SpNosemaCeranae=bombus[bombus$ProjectSubProject != "SI" &
@@ -94,6 +100,7 @@ for(i in names(freq.par.formulas)[1:3]){
 }
 
 ## *******************************************************
+
 
 bombus.CrithidiaPresence <- brm(par.formulas$SpCrithidiaPresence,
                         sub.bombus$SpCrithidiaPresence,
@@ -178,45 +185,45 @@ plot(pp_check(bombus.ApicystisSpp, resp="SpApicystisSpp", ndraws=10^3))
 
 ## *******************************************************
 
-## SI not converging, very few positives
+## ## SI not converging, very few positives
 
-bombus.SpNosemaBombi <- brm(par.formulas$SpNosemaBombi,
-                        bombus[bombus$ProjectSubProject != "SI",],
-                        cores=ncores,
-                        data2=list(phylo_matrix=phylo_matrix),
-                        iter = 10^4,
-                        chains =1,
-                        thin=1,
-                        init=0,
-                        open_progress = FALSE,
-                        control = list(adapt_delta = 0.999,
-                                       stepsize = 0.001,
-                                       max_treedepth = 20))
+## bombus.SpNosemaBombi <- brm(par.formulas$SpNosemaBombi,
+##                         bombus[bombus$ProjectSubProject != "SI",],
+##                         cores=ncores,
+##                         data2=list(phylo_matrix=phylo_matrix),
+##                         iter = 10^4,
+##                         chains =1,
+##                         thin=1,
+##                         init=0,
+##                         open_progress = FALSE,
+##                         control = list(adapt_delta = 0.999,
+##                                        stepsize = 0.001,
+##                                        max_treedepth = 20))
                   
-write.ms.table(bombus.SpNosemaBombi, "bombus_SpNosemaBombi")
-save(bombus,bombus.SpNosemaBombi,
-     file="saved/bombus_SpNosemaBombi.Rdata")
+## write.ms.table(bombus.SpNosemaBombi, "bombus_SpNosemaBombi")
+## save(bombus,bombus.SpNosemaBombi,
+##      file="saved/bombus_SpNosemaBombi.Rdata")
 
-load(file="saved/bombus_SpNosemaBombi.Rdata")
+## load(file="saved/bombus_SpNosemaBombi.Rdata")
 
-## good after dropping SI
-checked.bombus.SpNosemaBombi <-
-  check_brms(bombus.SpNosemaBombi)
+## ## good after dropping SI
+## checked.bombus.SpNosemaBombi <-
+##   check_brms(bombus.SpNosemaBombi)
 
-## good after dropping SI
-testDispersion(checked.bombus.SpNosemaBombi)
+## ## good after dropping SI
+## testDispersion(checked.bombus.SpNosemaBombi)
 
-## Random effect SD skewed
-plot.res(bombus.SpNosemaBombi, "bombus_SpNosemaBombi")
+## ## Random effect SD skewed
+## plot.res(bombus.SpNosemaBombi, "bombus_SpNosemaBombi")
 
-## Rhat and ESS good
-summary(bombus.SpNosemaBombi)
+## ## Rhat and ESS good
+## summary(bombus.SpNosemaBombi)
 
-## .41, good
-bayes_R2(bombus.SpNosemaBombi)
+## ## .41, good
+## bayes_R2(bombus.SpNosemaBombi)
 
-## Good
-plot(pp_check(bombus.SpNosemaBombi, resp="SpSpNosemaBombi", ndraws=10^3))
+## ## Good
+## plot(pp_check(bombus.SpNosemaBombi, resp="SpSpNosemaBombi", ndraws=10^3))
 
 ## *******************************************************
 ## Melissodes
@@ -319,13 +326,15 @@ plot(pp_check(melissodes.ApicystisSpp, resp="SpApicystisSpp", ndraws=10^3))
 ## *******************************************************
 
 apis <- sp.network.metrics[sp.network.metrics$Genus == "Apis",]
+apis <- apis[apis$ProjectSubProject != "PN-CA-FIRE",]
 
 ## Drop phylogeny from models
 par.formulas <- vector(mode="list", length=length(par.cols))
 names(par.formulas) <- par.cols
 for(par in par.cols){
   par.formulas[[par]] <- bf(formula(paste0(par, "| trials(SpScreened)~", 
-                         paste(c(net.cols.scale[-"HBOverlap"], "(1|Site)",
+                         paste(c(net.cols.scale[net.cols.scale!="scale(zHBOverlap)"],
+                                 "(1|Site)",
                                  "(1|Year)", "ProjectSubProject"),
                                collapse="+"))), family="binomial")
 }
@@ -334,7 +343,7 @@ for(par in par.cols){
 ## *******************************************************
 
 apis.CrithidiaPresence <- brm(par.formulas$SpCrithidiaPresence,
-                        apis[apis$ProjectSubProject != "PN-CA-FIRE",],
+                        apis,
                         cores=ncores,
                         iter = 10^4,
                         chains =1,
@@ -363,7 +372,7 @@ plot(pp_check(apis.CrithidiaPresence,
 ## *******************************************************
 
 apis.ApicystisSpp <- brm(par.formulas$SpApicystisSpp,
-                        apis[apis$ProjectSubProject != "PN-CA-FIRE",],
+                        apis,
                         cores=ncores,
                         iter = 10^4,
                         chains =1,

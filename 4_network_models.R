@@ -53,10 +53,10 @@ names(par.formulas) <- par.cols
 for(par in par.cols){
   par.formulas[[par]] <- bf(
     formula(paste0(par, "| trials(GenusScreened)~", 
-                   paste(c(net.cols.scale,
+                   paste(c(net.cols.scale, "ProjectSubProject",
                            "(1|Site)",
-                           "(1|Year)",
-                           "ProjectSubProject"),
+                           "(1|Year)"
+                           ),
                          collapse="+"))),
     family="zero_inflated_binomial")
 
@@ -102,10 +102,20 @@ for(i in names(freq.par.formulas)[1:3]){
   print(check_collinearity(mod))
 }
 
+for(i in names(freq.par.formulas)[1:3]){
+  print(i)
+  mod <- glmer(freq.par.formulas[[i]],
+                 data=sub.bombus[[i]],
+                 family="binomial")
+  print(summary(mod))
+  print(check_collinearity(mod))
+}
+
+
 ## *******************************************************
 
 bombus.CrithidiaPresence <- brm(par.formulas$GenusCrithidiaPresence,
-                        sub.bombus$GenusCrithidiaPresence
+                        sub.bombus$GenusCrithidiaPresence,
                         cores=ncores,
                         iter = 10^4,
                         chains =1,
@@ -188,44 +198,44 @@ plot(pp_check(bombus.ApicystisSpp, resp="SpApicystisSpp", ndraws=10^3))
 
 ## SI not converging, very few positives
 
-bombus.NosemaBombi <- brm(par.formulas$GenusNosemaBombi,
-                        sub.bombus$GenusNosemaBombi,
-                        cores=ncores,
-                        iter = 10^4,
-                        chains =1,
-                        thin=1,
-                        init=0,
-                        open_progress = FALSE,
-                        control = list(adapt_delta = 0.999,
-                                       stepsize = 0.001,
-                                       max_treedepth = 20))
+## bombus.NosemaBombi <- brm(par.formulas$GenusNosemaBombi,
+##                         sub.bombus$GenusNosemaBombi,
+##                         cores=ncores,
+##                         iter = 10^4,
+##                         chains =1,
+##                         thin=1,
+##                         init=0,
+##                         open_progress = FALSE,
+##                         control = list(adapt_delta = 0.999,
+##                                        stepsize = 0.001,
+##                                        max_treedepth = 20))
                   
-write.ms.table(bombus.NosemaBombi,
-               "network_bombus_NosemaBombi")
-save(bombus,bombus.NosemaBombi,
-     file="saved/network_bombus_NosemaBombi.Rdata")
+## write.ms.table(bombus.NosemaBombi,
+##                "network_bombus_NosemaBombi")
+## save(bombus,bombus.NosemaBombi,
+##      file="saved/network_bombus_NosemaBombi.Rdata")
 
-load(file="saved/network_bombus_NosemaBombi.Rdata")
+## load(file="saved/network_bombus_NosemaBombi.Rdata")
 
-## good after dropping SI
-checked.bombus.NosemaBombi <-
-  check_brms(bombus.NosemaBombi)
+## ## good after dropping SI
+## checked.bombus.NosemaBombi <-
+##   check_brms(bombus.NosemaBombi)
 
-## good after dropping SI
-testDispersion(checked.bombus.NosemaBombi)
+## ## good after dropping SI
+## testDispersion(checked.bombus.NosemaBombi)
 
-## Random effect SD skewed
-plot.res(bombus.NosemaBombi, "network_bombus_NosemaBombi")
+## ## Random effect SD skewed
+## plot.res(bombus.NosemaBombi, "network_bombus_NosemaBombi")
 
-## Rhat and ESS good
-summary(bombus.NosemaBombi)
+## ## Rhat and ESS good
+## summary(bombus.NosemaBombi)
 
-## .41, good
-bayes_R2(bombus.NosemaBombi)
+## ## .41, good
+## bayes_R2(bombus.NosemaBombi)
 
-## Good
-plot(pp_check(bombus.NosemaBombi,
-              resp="GenusNosemaBombi", ndraws=10^3))
+## ## Good
+## plot(pp_check(bombus.NosemaBombi,
+##               resp="GenusNosemaBombi", ndraws=10^3))
 
 ## *******************************************************
 ## Melissodes
@@ -414,9 +424,9 @@ apis.GenusNosemaCeranae <- brm(par.formulas$GenusNosemaCeranae,
                   
 write.ms.table(apis.GenusNosemaCeranae, "network_apis_GenusNosemaCeranae")
 save(apis,apis.GenusNosemaCeranae,
-     file="saved/network_apis_GenusNosemaCeranae.Rdata")
+     file="saved/network_apis_NosemaCeranae.Rdata")
 
-load(file="saved/network_apis_GenusNosemaCeranae.Rdata")
+load(file="saved/network_apis_NosemaCeranae.Rdata")
 
 plot.res(apis.GenusNosemaCeranae, "network_apis_GenusNosemaCeranae")
 
