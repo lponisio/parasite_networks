@@ -1,10 +1,8 @@
-rm(list=ls())
-setwd('~/Dropbox (University of Oregon)/')
-setwd("parasite_networks")
 
-## Script for plotting all of the important explanatory variables.
+rm(list=ls())
+setwd('~/Dropbox (University of Oregon)/parasite_networks')
+
 library(ggpubr)
-library(gridExtra)
 library(tidyverse)
 library(brms)
 library(tidybayes)
@@ -12,398 +10,118 @@ library(viridis)
 
 source("src/misc.R")
 source("src/ggplotThemes.R")
-
-## ***********************************************************************
-## Crithidia spp.
-## ***********************************************************************
-
-## ***********************************************************************
-## 1. Bombus
-## ***********************************************************************
-
-## https://www.rensvandeschoot.com/tutorials/generalised-linear-models-with-brms/
-## Generate newdata draws
+source("src/genusNetworkPlotting.R")
 
 
-load(file="saved/network_bombus_CrithidiaPresence.Rdata")
- 
-sub.bombus <- list(
-  GenusApicystisSpp=bombus[bombus$ProjectSubProject != "SF",], 
-  GenusCrithidiaPresence=bombus[bombus$ProjectSubProject != "SF",],
-  GenusNosemaBombi= bombus[bombus$ProjectSubProject != "SI" &
-                             bombus$ProjectSubProject != "PN-CA-FIRE",],
-  GenusNosemaCeranae=bombus[bombus$ProjectSubProject != "SI" &
-                              bombus$ProjectSubProject != "PN-CA-FIRE",]
+## -------------------- Metric map --------------------
+## Model formula uses scale(connectance), scale(zweighted.NODF), scale(zH2),
+## scale(zweighted.cluster.coefficient.HL), so fixef names are "scaleconnectance", etc.
+metrics <- tibble::tribble(
+  ~effect_key,                               ~coef_term,                                   ~xcol,                                  ~xlab,
+  "connectance",                             "scaleconnectance",                           "connectance",                           "Connectance",
+  "zweighted.NODF",                          "scalezweighted.NODF",                        "zweighted.NODF",                        "Nestedness (NODF)",
+  "zweighted.cluster.coefficient.HL",        "scalezweighted.cluster.coefficient.HL",      "zweighted.cluster.coefficient.HL",      "Modularity (Clustering coeff.)",
+  "zH2",                                     "scalezH2",                                   "zH2",                                   "Specialization (H2)"
 )
 
-bombus.CrithidiaPresence.cond.effects <-
-  conditional_effects(bombus.CrithidiaPresence)
-
-
-crithidia.bombus.box <- bombus %>%
-  ggplot(aes(x = ProjectSubProject,
-             y = GenusCrithidiaPresence / GenusScreened)) +
-  geom_boxplot() +
-  ggtitle("Bombus") + 
-  theme_ms() +
-  geom_jitter(aes(color = Genus), linewidth = 2, alpha = 0.9) +
-  scale_color_viridis(discrete = TRUE) +
-  xlab("Project") + 
-  ylab("Crithidia prevalence") +
-  theme(
-    legend.position = "bottom",
-    plot.title = element_text(color = "black")  # Ensure title is black
-  ) +
-  labs(color = "")
-
-
-## ***************************************************************************
-## Crithidia ~ all network metrics
-
-## all metrics have strong effects
-
-## connectance 
-bombus.CrithidiaPresence_connectance <-
-  bombus.CrithidiaPresence.cond.effects[["connectance"]]
-
-p1.parasite <- ggplot(bombus.CrithidiaPresence_connectance,
-                      aes(x = connectance, y= estimate__)) +
-  geom_line(aes(x = connectance, y= estimate__), linewidth = 1.5,
-            linetype="solid") +
-  geom_ribbon(aes(ymin = lower__, ymax = upper__, alpha=0.4))+
-  labs(x = "Connectance", y = "Crithidia prevalence",
-       fill = "Credible interval") +
-  theme_ms() +
-  theme(legend.position = "none") +
-  geom_point(data=sub.bombus$GenusCrithidiaPresence,
-             aes(y= PropGenusCrithidiaPresence,
-                 x=connectance, color=ProjectSubProject
-                 )) +
-  scale_color_viridis(discrete=TRUE)
-
-## Nestedness
-bombus.CrithidiaPresence_zweighted.NODF <-
-  bombus.CrithidiaPresence.cond.effects[["zweighted.NODF"]]
-
-p2.parasite <- ggplot(bombus.CrithidiaPresence_zweighted.NODF,
-                      aes(x = zweighted.NODF, y= estimate__)) +
-  geom_line(aes(x = zweighted.NODF, y= estimate__), linewidth = 1.5,
-            linetype="solid") +
-  geom_ribbon(aes(ymin = lower__, ymax = upper__, alpha=0.4))+
-  labs(x = "Nestedness (NODF)", y = "Crithidia prevalence",
-       fill = "Credible interval") +
-  theme_ms() +
-  geom_point(data=sub.bombus$GenusCrithidiaPresence[
-              sub.bombus$GenusCrithidiaPresence$zweighted.NODF<0.96,],
-             aes(y= PropGenusCrithidiaPresence,
-                 x=zweighted.NODF, color=ProjectSubProject
-                 )) +
-  scale_color_viridis(discrete=TRUE)
-
-
-## modularity
-bombus.CrithidiaPresence_zweighted.cluster.coefficient.HL <-
-  bombus.CrithidiaPresence.cond.effects[["zweighted.cluster.coefficient.HL"]]
-
-p3.parasite <- ggplot(bombus.CrithidiaPresence_zweighted.cluster.coefficient.HL,
-                      aes(x = zweighted.cluster.coefficient.HL, y= estimate__)) +
-  geom_line(aes(x = zweighted.cluster.coefficient.HL, y= estimate__ ), linewidth = 1.5) +
-  geom_ribbon(aes(ymin = lower__, ymax = upper__, alpha=0.4))+
-  labs(x = "Modularity (Clustering coeff.)", y = "Crithidia prevalence",
-       fill = "Credible interval") +
-  theme_ms() +
-  geom_point(data=sub.bombus$GenusCrithidiaPresence,
-             aes(y= PropGenusCrithidiaPresence,
-                 x=zweighted.cluster.coefficient.HL,
-                 color=ProjectSubProject
-                 )) +
-  scale_color_viridis(discrete=TRUE)
-
-## H2
-bombus.CrithidiaPresence_zH2 <-
-  bombus.CrithidiaPresence.cond.effects[["zH2"]]
-
-p4.parasite <- ggplot(bombus.CrithidiaPresence_zH2,
-                      aes(x = zH2, y= estimate__)) +
-  geom_line(aes(x = zH2, y= estimate__ ), linewidth = 1.5) +
-  geom_ribbon(aes(ymin = lower__, ymax = upper__, alpha=0.4))+
-  labs(x = "Specialization (H2)", y = "Crithidia prevalence",
-       fill = "Credible interval") +
-  theme_ms() +
-  geom_point(data=sub.bombus$GenusCrithidiaPresence,
-             aes(y= PropGenusCrithidiaPresence,
-                 x=zH2, color=ProjectSubProject
-                 )) +
-  scale_color_viridis(discrete=TRUE)
-
-
-leg <- p4.parasite + theme(legend.position = "bottom") +
-  guides(alpha = "none") + labs(shape = "Project", color="")
-
-
-bombus.CrithidiaPresence.plot <- ggarrange(p1.parasite,
-                                      p2.parasite, p3.parasite, p4.parasite,
-                                      labels = c("A", "B", "C","D"), 
-                                      ncol = 2, nrow = 2,
-                                      common.legend = TRUE, legend="bottom",
-                                      legend.grob=get_legend(leg))
-
-ggsave(bombus.CrithidiaPresence.plot,
-       file="figures/network_bombus.CrithidiaPresence.pdf",
-       height=8, width=12)
-
-## ***********************************************************************
-## 2. Apis
-## ***********************************************************************
-
-## only h2 has any effect, not > 0.95
-
-## https://www.rensvandeschoot.com/tutorials/generalised-linear-models-with-brms/
-## Generate newdata draws
-
-load(file="saved/network_apis_CrithidiaPresence.Rdata")
-apis.CrithidiaPresence.cond.effects <-
-  conditional_effects(apis.CrithidiaPresence)
-
-apis.sub <- apis[apis$ProjectSubProject != "PN-CA-FIRE" &
-                   apis$ProjectSubProject != "PN-COAST",]
-
-crithidia.apis.box <- apis %>%
-  ggplot(aes(x = ProjectSubProject,
-             y = GenusCrithidiaPresence / GenusScreened)) +
-  geom_boxplot() +
-  ggtitle("Apis") + 
-  theme_ms() +
-  geom_jitter(aes(color = Genus), linewidth = 2, alpha = 0.9) +
-  scale_color_viridis(discrete = TRUE) +
-  xlab("Project") + 
-  ylab("Crithidia prevalence") +
-  theme(
-    legend.position = "bottom",
-    plot.title = element_text(color = "black")  # Ensure title is black
-  ) +
-  labs(color = "")
-
-
-
-## ***************************************************************************
-## Crithidia ~ all network metrics
-
-## connectance 
-apis.CrithidiaPresence_connectance <-
-  apis.CrithidiaPresence.cond.effects[["connectance"]]
-
-p1.parasite <- ggplot(apis.CrithidiaPresence_connectance,
-                      aes(x = connectance, y= estimate__)) +
-  geom_line(aes(x = connectance, y= estimate__), linewidth = 1.5,
-            linetype="dashed") +
-  geom_ribbon(aes(ymin = lower__, ymax = upper__, alpha=0.4))+
-  labs(x = "Connectance", y = "Crithidia prevalence",
-       fill = "Credible interval") +
-  theme_ms() +
-  theme(legend.position = "none") +
-  geom_point(data=apis.sub,
-             aes(y= PropGenusCrithidiaPresence,
-                 x=connectance, color=ProjectSubProject)) +
-  scale_color_viridis(discrete=TRUE)
-
-## Nestedness
-apis.CrithidiaPresence_zweighted.NODF <-
-  apis.CrithidiaPresence.cond.effects[["zweighted.NODF"]]
-
-p2.parasite <- ggplot(apis.CrithidiaPresence_zweighted.NODF,
-                      aes(x = zweighted.NODF, y= estimate__)) +
-  geom_line(aes(x = zweighted.NODF, y= estimate__), linewidth = 1.5,
-            linetype="dashed") +
-  geom_ribbon(aes(ymin = lower__, ymax = upper__, alpha=0.4))+
-  labs(x = "Nestedness (NODF)", y = "Crithidia prevalence",
-       fill = "Credible interval") +
-  theme_ms() +
-  geom_point(data=apis,
-             aes(y= PropGenusCrithidiaPresence,
-                 x=zweighted.NODF, color=ProjectSubProject)) +
-  scale_color_viridis(discrete=TRUE)
-
-
-## modularity
-apis.CrithidiaPresence_zweighted.cluster.coefficient.HL <-
-  apis.CrithidiaPresence.cond.effects[["zweighted.cluster.coefficient.HL"]]
-
-p3.parasite <- ggplot(apis.CrithidiaPresence_zweighted.cluster.coefficient.HL,
-                      aes(x = zweighted.cluster.coefficient.HL, y= estimate__)) +
-  geom_line(aes(x = zweighted.cluster.coefficient.HL, y= estimate__ ), linewidth = 1.5,
-            linetype="dashed") +
-  geom_ribbon(aes(ymin = lower__, ymax = upper__, alpha=0.4))+
-  labs(x = "Modularity (Clustering coeff.)", y = "Crithidia prevalence",
-       fill = "Credible interval") +
-  theme_ms() +
-  geom_point(data=apis,
-             aes(y= PropGenusCrithidiaPresence,
-                 x=zweighted.cluster.coefficient.HL, color=ProjectSubProject)) +
-  scale_color_viridis(discrete=TRUE)
-
-## H2
-apis.CrithidiaPresence_zH2 <-
-  apis.CrithidiaPresence.cond.effects[["zH2"]]
-
-p4.parasite <- ggplot(apis.CrithidiaPresence_zH2,
-                      aes(x = zH2, y= estimate__)) +
-  geom_line(aes(x = zH2, y= estimate__ ), linewidth = 1.5,
-            linetype="dashed") +
-  geom_ribbon(aes(ymin = lower__, ymax = upper__, alpha=0.4))+
-  labs(x = "Specialization (H2)", y = "Crithidia prevalence",
-       fill = "Credible interval") +
-  theme_ms() +
-  geom_point(data=apis,
-             aes(y= PropGenusCrithidiaPresence,
-                 x=zH2, color=ProjectSubProject)) +
-  scale_color_viridis(discrete=TRUE)
-
-
-leg <- p4.parasite + theme(legend.position = "bottom") +
-  guides(alpha = "none") + labs(shape = "Project", color="")
-
-
-apis.CrithidiaPresence <- ggarrange(p1.parasite, p2.parasite,
-                                    p3.parasite, p4.parasite,
-                                    labels = c("A", "B", "C","D"), 
-                                    ncol = 2, nrow = 2,
-                                    common.legend = TRUE, legend="bottom",
-                                    legend.grob=get_legend(leg))
-
-
-ggsave(apis.CrithidiaPresence,
-       file="figures/network_apis.CrithidiaPresence.pdf",
-       height=8, width=12)
-
-## ***********************************************************************
-## 2. Melissodes
-## ***********************************************************************
-
-## https://www.rensvandeschoot.com/tutorials/generalised-linear-models-with-brms/
-## Generate newdata draws
-
-load(file="saved/network_melissodes_CrithidiaPresence.Rdata")
-melissodes.CrithidiaPresence.cond.effects <-
-  conditional_effects(melissodes.CrithidiaPresence)
-
-
-crithidia.melissodes.box <- melissodes %>%
-  ggplot(aes(x = ProjectSubProject,
-             y = GenusCrithidiaPresence / GenusScreened)) +
-  geom_boxplot() +
-  ggtitle("Melissodes") + 
-  theme_ms() +
-  geom_jitter(aes(color = Genus), linewidth = 2, alpha = 0.9) +
-  scale_color_viridis(discrete = TRUE) +
-  xlab("Project") + 
-  ylab("Crithidia prevalence") +
-  theme(
-    legend.position = "bottom",
-    plot.title = element_text(color = "black")  # Ensure title is black
-  ) +
-  labs(color = "")
-
-
-## ***************************************************************************
-## Crithidia ~ all network metrics
-
-## connectance 
-melissodes.CrithidiaPresence_connectance <-
-  melissodes.CrithidiaPresence.cond.effects[["connectance"]]
-
-p1.parasite <- ggplot(melissodes.CrithidiaPresence_connectance,
-                      aes(x = connectance, y= estimate__)) +
-  geom_line(aes(x = connectance, y= estimate__), linewidth = 1.5) +
-  geom_ribbon(aes(ymin = lower__, ymax = upper__, alpha=0.4))+
-  labs(x = "Connectance", y = "Crithidia prevalence",
-       fill = "Credible interval") +
-  theme_ms() +
-  theme(legend.position = "none") +
-  geom_point(data=melissodes,
-             aes(y= PropGenusCrithidiaPresence,
-                 x=connectance, color=ProjectSubProject
-                 )) +
-  scale_color_viridis(discrete=TRUE)
-
-## Nestedness
-melissodes.CrithidiaPresence_zweighted.NODF <-
-  melissodes.CrithidiaPresence.cond.effects[["zweighted.NODF"]]
-
-p2.parasite <- ggplot(melissodes.CrithidiaPresence_zweighted.NODF,
-                      aes(x = zweighted.NODF, y= estimate__)) +
-  geom_line(aes(x = zweighted.NODF, y= estimate__), linewidth = 1.5) +
-  geom_ribbon(aes(ymin = lower__, ymax = upper__, alpha=0.4))+
-  labs(x = "Nestedness (NODF)", y = "Crithidia prevalence",
-       fill = "Credible interval") +
-  theme_ms() +
-  geom_point(data=melissodes,
-             aes(y= PropGenusCrithidiaPresence,
-                 x=connectance, color=ProjectSubProject
-                 )) +
-  scale_color_viridis(discrete=TRUE)
-
-
-## modularity
-melissodes.CrithidiaPresence_zweighted.cluster.coefficient.HL <-
-  melissodes.CrithidiaPresence.cond.effects[["zweighted.cluster.coefficient.HL"]]
-
-p3.parasite <- ggplot(melissodes.CrithidiaPresence_zweighted.cluster.coefficient.HL,
-                      aes(x = zweighted.cluster.coefficient.HL, y= estimate__)) +
-  geom_line(aes(x = zweighted.cluster.coefficient.HL, y= estimate__ ), linewidth = 1.5) +
-  geom_ribbon(aes(ymin = lower__, ymax = upper__, alpha=0.4))+
-  labs(x = "Modularity (Clustering coeff.)", y = "Crithidia prevalence",
-       fill = "Credible interval") +
-  theme_ms() +
-  geom_point(data=melissodes,
-             aes(y= PropGenusCrithidiaPresence,
-                 x=connectance, color=ProjectSubProject
-                 )) +
-  scale_color_viridis(discrete=TRUE)
-
-## H2
-melissodes.CrithidiaPresence_zH2 <-
-  melissodes.CrithidiaPresence.cond.effects[["zH2"]]
-
-p4.parasite <- ggplot(melissodes.CrithidiaPresence_zH2,
-                      aes(x = zH2, y= estimate__)) +
-  geom_line(aes(x = zH2, y= estimate__ ), linewidth = 1.5) +
-  geom_ribbon(aes(ymin = lower__, ymax = upper__, alpha=0.4))+
-  labs(x = "Specialization (H2)", y = "Crithidia prevalence",
-       fill = "Credible interval") +
-  theme_ms() +
-  geom_point(data=melissodes,
-             aes(y= PropGenusCrithidiaPresence,
-                 x=connectance, color=ProjectSubProject
-                 )) +
-  scale_color_viridis(discrete=TRUE)
-
-leg <- p4.parasite + theme(legend.position = "bottom") +
-  guides(alpha = "none") +
-  labs(shape = "Project", color="") + labs(shape = "Project", color="")
-
-
-melissodes.CrithidiaPresence <- ggarrange(p1.parasite, p2.parasite,
-                                    p3.parasite, p4.parasite,
-                                    labels = c("A", "B", "C","D"), 
-                                    ncol = 2, nrow = 2,
-                                    common.legend = TRUE, legend="bottom",
-                                    legend.grob=get_legend(leg))
-
-
-ggsave(melissodes.CrithidiaPresence,
-       file="figures/network_melissodes.CrithidiaPresence.pdf",
-       height=8, width=12)
-
-
-crithidia.box <- ggarrange(crithidia.bombus.box, crithidia.apis.box,
-                                    crithidia.melissodes.box,
-                                    labels = c("A", "B", "C"), 
-                                    ncol = 1, nrow = 3)
-
-ggsave(crithidia.box,
-       file="figures/box_CrithidiaPresence.pdf",
-       height=20, width=10)
-
-
-
+## ============================================================
+## CRITHIDIA — Bombus / Apis / Melissodes
+## ============================================================
+
+# ---- Bombus ----
+load("saved/network_bombus_CrithidiaPresence.Rdata")  # object: bombus.CrithidiaPresence
+bombus_net <- bombus |> filter(ProjectSubProject != "SF")
+bombus_crith_fig <- make_network_figure(
+  fit = bombus.CrithidiaPresence,
+  raw_df = bombus_net,
+  outcome_label = "Crithidia prevalence",
+  prop_col = "PropGenusCrithidiaPresence",  # if not present, it will compute successes/trials
+  succ_col = "GenusCrithidiaPresence",
+  trials_col = "GenusScreened",
+  metrics_spec = metrics,
+  ncol = 4
+)
+ggsave("figures/network_bombus.CrithidiaPresence.pdf",
+       plot = bombus_crith_fig, width = 20, height = 5)
+
+# ---- Apis ----
+load("saved/network_apis_CrithidiaPresence.Rdata")    # object: apis.CrithidiaPresence
+apis_net <- apis |> filter(!ProjectSubProject %in% c("PN-CA-FIRE","PN-COAST"))
+apis_crith_fig <- make_network_figure(
+  fit = apis.CrithidiaPresence,
+  raw_df = apis_net,
+  outcome_label = "Crithidia prevalence",
+  prop_col = "PropGenusCrithidiaPresence",
+  succ_col = "GenusCrithidiaPresence",
+  trials_col = "GenusScreened",
+  metrics_spec = metrics,
+  ncol=4
+)
+ggsave("figures/network_apis.CrithidiaPresence.pdf",
+       plot = apis_crith_fig,  width = 20, height = 5)
+
+# ---- Melissodes ----
+load("saved/network_melissodes_CrithidiaPresence.Rdata")  # object: melissodes.CrithidiaPresence
+mel_net <- melissodes
+mel_crith_fig <- make_network_figure(
+  fit = melissodes.CrithidiaPresence,
+  raw_df = mel_net,
+  outcome_label = "Crithidia prevalence",
+  prop_col = "PropGenusCrithidiaPresence",
+  succ_col = "GenusCrithidiaPresence",
+  trials_col = "GenusScreened",
+  metrics_spec = metrics,
+  ncol=4
+)
+ggsave("figures/network_melissodes.CrithidiaPresence.pdf",
+       plot = mel_crith_fig, width = 20, height = 5)
+
+## ============================================================
+## APICYSTIS — Bombus / Apis / Melissodes
+## (Assumes analogous saved fits & columns; adjust names if needed)
+## ============================================================
+
+# ---- Bombus ----
+load("saved/network_bombus_ApicystisSpp.Rdata")  # object: bombus.ApicystisSpp
+bombus_apic_fig <- make_network_figure(
+  fit = bombus.ApicystisSpp,
+  raw_df = bombus_net,  # same subset rule as Crithidia
+  outcome_label = "Apicystis prevalence",
+  prop_col = "PropGenusApicystisSpp",
+  succ_col = "GenusApicystisSpp",
+  trials_col = "GenusScreened",
+  metrics_spec = metrics,
+  ncol=4
+)
+ggsave("figures/network_bombus.ApicystisSpp.pdf",
+       plot = bombus_apic_fig, width = 20, height = 5)
+
+# ---- Apis ----
+load("saved/network_apis_ApicystisSpp.Rdata")    # object: apis.ApicystisSpp
+apis_apic_fig <- make_network_figure(
+  fit = apis.ApicystisSpp,
+  raw_df = apis_net,
+  outcome_label = "Apicystis prevalence",
+  prop_col = "PropGenusApicystisSpp",
+  succ_col = "GenusApicystisSpp",
+  trials_col = "GenusScreened",
+  metrics_spec = metrics,
+  ncol=4
+)
+ggsave("figures/network_apis.ApicystisSpp.pdf",
+       plot = apis_apic_fig, width = 20, height = 5)
+
+# ---- Melissodes ----
+load("saved/network_melissodes_ApicystisSpp.Rdata")  # object: melissodes.ApicystisSpp
+mel_apic_fig <- make_network_figure(
+  fit = melissodes.ApicystisSpp,
+  raw_df = mel_net,
+  outcome_label = "Apicystis prevalence",
+  prop_col = "PropGenusApicystisSpp",
+  succ_col = "GenusApicystisSpp",
+  trials_col = "GenusScreened",
+  metrics_spec = metrics,
+   ncol=4
+)
+ggsave("figures/network_melissodes.ApicystisSpp.pdf",
+       plot = mel_apic_fig, width = 20, height = 5)

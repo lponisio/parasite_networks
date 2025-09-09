@@ -140,7 +140,7 @@ p5.parasite <- ggplot(bombus.ApicystisSpp_zHBOverlap,
                       aes(x = zHBOverlap, y= estimate__)) +
   geom_line(aes(x = zHBOverlap, y= estimate__ ), linewidth = 1.5) +
   geom_ribbon(aes(ymin = lower__, ymax = upper__, alpha=0.4))+
-  labs(x = "d", y = "Apicystis prevalence",
+  labs(x = "Apis overlap", y = "Apicystis prevalence",
        fill = "Credible interval") +
   theme_ms() +
   geom_point(data=sub.bombus$SpApicystisSpp,

@@ -24,7 +24,9 @@ network.metrics$ProjectSubProject <- as.factor(
 net.cols <- c("connectance",
               "zweighted.NODF",
               "zH2",
-              "zweighted.cluster.coefficient.HL")
+              "zweighted.cluster.coefficient.HL",
+              "number.of.species.HL",
+              "number.of.species.LL")
 
 net.cols.scale <- paste0("scale(", net.cols, ")")
 
@@ -410,30 +412,30 @@ plot(pp_check(apis.ApicystisSpp, resp="GenusApicystisSpp", ndraws=10^3))
 
 ## *******************************************************
 
-apis.GenusNosemaCeranae <- brm(par.formulas$GenusNosemaCeranae,
-                        apis[apis$ProjectSubProject != "PN-CA-FIRE",],
-                        cores=ncores,
-                        iter = 10^4,
-                        chains =1,
-                        thin=1,
-                        init=0,
-                        open_progress = FALSE,
-                        control = list(adapt_delta = 0.999,
-                                       stepsize = 0.001,
-                                       max_treedepth = 20))
+## apis.GenusNosemaCeranae <- brm(par.formulas$GenusNosemaCeranae,
+##                         apis[apis$ProjectSubProject != "PN-CA-FIRE",],
+##                         cores=ncores,
+##                         iter = 10^4,
+##                         chains =1,
+##                         thin=1,
+##                         init=0,
+##                         open_progress = FALSE,
+##                         control = list(adapt_delta = 0.999,
+##                                        stepsize = 0.001,
+##                                        max_treedepth = 20))
                   
-write.ms.table(apis.GenusNosemaCeranae, "network_apis_GenusNosemaCeranae")
-save(apis,apis.GenusNosemaCeranae,
-     file="saved/network_apis_NosemaCeranae.Rdata")
+## write.ms.table(apis.GenusNosemaCeranae, "network_apis_GenusNosemaCeranae")
+## save(apis,apis.GenusNosemaCeranae,
+##      file="saved/network_apis_NosemaCeranae.Rdata")
 
-load(file="saved/network_apis_NosemaCeranae.Rdata")
+## load(file="saved/network_apis_NosemaCeranae.Rdata")
 
-plot.res(apis.GenusNosemaCeranae, "network_apis_GenusNosemaCeranae")
+## plot.res(apis.GenusNosemaCeranae, "network_apis_GenusNosemaCeranae")
 
-summary(apis.GenusNosemaCeranae)
+## summary(apis.GenusNosemaCeranae)
 
-## .58
-bayes_R2(apis.GenusNosemaCeranae)
+## ## .58
+## bayes_R2(apis.GenusNosemaCeranae)
 
-plot(pp_check(apis.GenusNosemaCeranae,
-              resp="GenusNosemaCeranae", ndraws=10^3))
+## plot(pp_check(apis.GenusNosemaCeranae,
+##               resp="GenusNosemaCeranae", ndraws=10^3))

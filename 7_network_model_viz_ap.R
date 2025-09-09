@@ -113,7 +113,7 @@ p3.parasite <- ggplot(bombus.ApicystisSpp_zweighted.cluster.coefficient.HL,
        fill = "Credible interval") +
   theme_ms() +
   geom_point(data=sub.bombus$GenusApicystisSpp[
-    sub.bombus$GenusApicystisSpp$zweighted.cluster.coefficient.HL<7.5,]
+    sub.bombus$GenusApicystisSpp$zweighted.cluster.coefficient.HL<7.5,],
              aes(y= PropGenusApicystisSpp,
                  x=zweighted.cluster.coefficient.HL,
                  color=ProjectSubProject
