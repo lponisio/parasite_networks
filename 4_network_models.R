@@ -21,8 +21,7 @@ network.metrics$Site <- as.factor(network.metrics$Site)
 network.metrics$ProjectSubProject <- as.factor(
   network.metrics$ProjectSubProject)
 
-net.cols <- c("connectance",
-              "zweighted.NODF",
+net.cols <- c("zweighted.NODF",
               "zH2",
               "zweighted.cluster.coefficient.HL",
               "number.of.species.HL",
@@ -30,8 +29,8 @@ net.cols <- c("connectance",
 
 net.cols.scale <- paste0("scale(", net.cols, ")")
 
-par.cols <- c("GenusApicystisSpp", "GenusCrithidiaPresence",
-              "GenusNosemaBombi", "GenusNosemaCeranae")
+par.cols <- c("GenusApicystisSpp", "GenusCrithidiaPresence")
+              ## "GenusNosemaBombi", "GenusNosemaCeranae")
 
 
 par.formulas <- vector(mode="list", length=length(par.cols))
@@ -42,10 +41,6 @@ names(par.formulas) <- par.cols
 ## *******************************************************
 ## Genus Specific models
 ## *******************************************************
-
-par.cols <- c("GenusApicystisSpp", "GenusCrithidiaPresence",
-              "GenusNosemaBombi", "GenusNosemaCeranae")
-
 
 par.formulas <- vector(mode="list", length=length(par.cols))
 freq.par.formulas <- vector(mode="list", length=length(par.cols))
@@ -81,34 +76,29 @@ write.csv(bombus[, c(net.cols, "Site", "Year", "ProjectSubProject",
                      "GenusScreened",
                      par.cols)], file="data/bombus_network.csv")
 
+tapply(bombus$GenusScreened, bombus$ProjectSubProject, sum)
+tapply(bombus$GenusCrithidiaPresence, bombus$ProjectSubProject, sum)
+tapply(bombus$GenusApicystisSpp, bombus$ProjectSubProject, sum)
+
+## Not enough positives to do anything with
+tapply(bombus$GenusNosemaBombi, bombus$ProjectSubProject, sum)
+tapply(bombus$GenusNosemaCeranae, bombus$ProjectSubProject, sum)
+
 ## There aren't enough screenings in SI for Apicystis or Crithidia
 ## model to run. 
 
 sub.bombus <- list(
-  GenusApicystisSpp=bombus[bombus$ProjectSubProject != "SF",], 
-  GenusCrithidiaPresence=bombus[bombus$ProjectSubProject != "SF",],
-  GenusNosemaBombi= bombus[bombus$ProjectSubProject != "SI" &
-                           bombus$ProjectSubProject != "PN-CA-FIRE",],
-  GenusNosemaCeranae=bombus[bombus$ProjectSubProject != "SI" &
-                            bombus$ProjectSubProject != "PN-CA-FIRE",]
+  GenusApicystisSpp=bombus[!bombus$ProjectSubProject %in% c("SF", "PN-CA-FIRE"),], 
+  GenusCrithidiaPresence=bombus[bombus$ProjectSubProject != "SF",]
 )
 
 ## check models
-for(i in names(freq.par.formulas)[1:3]){
+for(i in names(freq.par.formulas)){
   print(i)
   mod <- glmmTMB(freq.par.formulas[[i]],
                  data=sub.bombus[[i]],
                  family="binomial",
                  ziformula=~1)
-  print(summary(mod))
-  print(check_collinearity(mod))
-}
-
-for(i in names(freq.par.formulas)[1:3]){
-  print(i)
-  mod <- glmer(freq.par.formulas[[i]],
-                 data=sub.bombus[[i]],
-                 family="binomial")
   print(summary(mod))
   print(check_collinearity(mod))
 }
@@ -156,8 +146,6 @@ plot(pp_check(bombus.CrithidiaPresence,
               resp="GenusCrithidiaPresence", ndraws=10^3))
 
 ## *******************************************************
-
-## SF not converging, not very many bombus screened.
 
 bombus.ApicystisSpp <- brm(par.formulas$GenusApicystisSpp,
                         sub.bombus$GenusApicystisSpp,
@@ -253,6 +241,12 @@ write.csv(melissodes[, c(net.cols, "Site", "Year", "ProjectSubProject",
 
 
 
+tapply(melissodes$GenusScreened, melissodes$ProjectSubProject, sum)
+tapply(melissodes$GenusCrithidiaPresence, melissodes$ProjectSubProject, sum)
+tapply(melissodes$GenusApicystisSpp, melissodes$ProjectSubProject, sum)
+
+
+
 ## check models
 for(i in names(freq.par.formulas)[1:2]){
   print(i)
@@ -337,11 +331,18 @@ plot(pp_check(melissodes.ApicystisSpp, resp="GenusApicystisSpp", ndraws=10^3))
 
 apis <- network.metrics[network.metrics$Genus == "Apis",]
 
-apis.sub <- apis[apis$ProjectSubProject != "PN-CA-FIRE" &
-                apis$ProjectSubProject != "PN-COAST",]
+
+tapply(apis$GenusScreened, apis$ProjectSubProject, sum)
+tapply(apis$GenusCrithidiaPresence, apis$ProjectSubProject, sum)
+tapply(apis$GenusApicystisSpp, apis$ProjectSubProject, sum)
+
+
+
+apis.sub <- apis[!apis$ProjectSubProject %in% c("PN-CA-FIRE",
+                                               "PN-COAST", "SF"),]
                  
 ## check models
-for(i in names(freq.par.formulas)[c(1,2,4)]){
+for(i in names(freq.par.formulas)){
   print(i)
   mod <- glmmTMB(freq.par.formulas[[i]],
                  data=apis.sub,
