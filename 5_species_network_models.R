@@ -77,26 +77,20 @@ write.csv(bombus[, c(net.cols, "Site", "Year", "ProjectSubProject",
 ## model to run. 
 
 sub.bombus <- list(
-  SpApicystisSpp=bombus[bombus$ProjectSubProject != "SF" &
-                        bombus$ProjectSubProject != "PN-CA-FIRE",], 
-  SpCrithidiaPresence=bombus[bombus$ProjectSubProject != "SF" &
-                            bombus$ProjectSubProject != "PN-CA-FIRE",],
-  SpNosemaBombi= bombus[bombus$ProjectSubProject != "SI" &
-                        bombus$ProjectSubProject != "PN-CA-FIRE",],
-  SpNosemaCeranae=bombus[bombus$ProjectSubProject != "SI" &
-                         bombus$ProjectSubProject != "PN-CA-FIRE",]
+  SpApicystisSpp=bombus[!bombus$ProjectSubProject %in% c("SF", "PN-CA-FIRE"),], 
+  SpCrithidiaPresence=bombus[bombus$ProjectSubProject != "SF",]
 )
 
 
 ## check models
-for(i in names(freq.par.formulas)[1:3]){
+for(i in names(freq.par.formulas)){
   print(i)
   mod <- glmmTMB(freq.par.formulas[[i]],
                  data=sub.bombus[[i]],
                  family="binomial",
                  ziformula=~1)
   print(summary(mod))
-  ##  print(check_collinearity(mod))
+  print(check_collinearity(mod))
 }
 
 ## *******************************************************
