@@ -1,5 +1,5 @@
 
-theme_dark_black <- function(base_size=14, base_family="sans") {
+theme_talk_black <- function(base_size=14, base_family="sans") {
    library(grid)
    library(ggthemes)
    (theme_foundation(base_size=base_size, base_family=base_family)

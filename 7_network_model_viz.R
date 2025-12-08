@@ -13,39 +13,77 @@ source("src/ggplotThemes.R")
 source("src/genusNetworkPlotting.R")
 
 
-## -------------------- Metric map --------------------
-## Model formula uses scale(connectance), scale(zweighted.NODF), scale(zH2),
-## scale(zweighted.cluster.coefficient.HL), so fixef names are "scaleconnectance", etc.
+## Metric map Model formula uses scale(connectance),
+## scale(zweighted.NODF), scale(zH2),
+## scale(zweighted.cluster.coefficient.HL), so fixef names are
+## "scaleconnectance", etc.
+
 metrics <- tibble::tribble(
-  ~effect_key,                               ~coef_term,                                   ~xcol,                                  ~xlab,
-  "connectance",                             "scaleconnectance",                           "connectance",                           "Connectance",
-  "zweighted.NODF",                          "scalezweighted.NODF",                        "zweighted.NODF",                        "Nestedness (NODF)",
-  "zweighted.cluster.coefficient.HL",        "scalezweighted.cluster.coefficient.HL",      "zweighted.cluster.coefficient.HL",      "Modularity (Clustering coeff.)",
-  "zH2",                                     "scalezH2",                                   "zH2",                                   "Specialization (H2)"
+  ~effect_key,
+  ~coef_term,
+  ~xcol,
+  ~xlab,
+  "zweighted.NODF",
+  "scalezweighted.NODF",
+  "zweighted.NODF",
+  "Nestedness (NODF)",
+  "zweighted.cluster.coefficient.HL",
+  "scalezweighted.cluster.coefficient.HL",
+  "zweighted.cluster.coefficient.HL",
+  "Modularity (Clustering coeff.)",
+  "zH2",
+  "scalezH2",
+  "zH2",
+  "Selectivity (H2)"
 )
 
 ## ============================================================
 ## CRITHIDIA — Bombus / Apis / Melissodes
 ## ============================================================
 
-# ---- Bombus ----
-load("saved/network_bombus_CrithidiaPresence.Rdata")  # object: bombus.CrithidiaPresence
+##  Bombus 
+load("saved/network_bombus_CrithidiaPresence.Rdata")
+## object: bombus.CrithidiaPresence
+
 bombus_net <- bombus |> filter(ProjectSubProject != "SF")
+
 bombus_crith_fig <- make_network_figure(
   fit = bombus.CrithidiaPresence,
   raw_df = bombus_net,
   outcome_label = "Crithidia prevalence",
-  prop_col = "PropGenusCrithidiaPresence",  # if not present, it will compute successes/trials
+  prop_col = "PropGenusCrithidiaPresence",  ## if not present, it will compute successes/trials
   succ_col = "GenusCrithidiaPresence",
   trials_col = "GenusScreened",
   metrics_spec = metrics,
-  ncol = 4
+  ncol = 3,
+  show_points = FALSE
 )
 ggsave("figures/network_bombus.CrithidiaPresence.pdf",
        plot = bombus_crith_fig, width = 20, height = 5)
 
-# ---- Apis ----
-load("saved/network_apis_CrithidiaPresence.Rdata")    # object: apis.CrithidiaPresence
+
+## black talk theme + points off
+bombus_crith_fig_dark <- make_network_figure(
+  fit = bombus.CrithidiaPresence,
+  raw_df = bombus_net,
+  outcome_label = "Crithidia prevalence",
+  prop_col = "PropGenusCrithidiaPresence",
+  succ_col = "GenusCrithidiaPresence",
+  trials_col = "GenusScreened",
+  metrics_spec = metrics,
+  ncol = 3,
+  show_points = FALSE,
+  theme = "talk_black"
+)
+
+ggsave("figures/network_bombus.CrithidiaPresence_dark.pdf",
+       plot = bombus_crith_fig_dark, width = 20, height = 5)
+
+
+
+##  Apis 
+load("saved/network_apis_CrithidiaPresence.Rdata")
+## object: apis.CrithidiaPresence
 apis_net <- apis |> filter(!ProjectSubProject %in% c("PN-CA-FIRE","PN-COAST"))
 apis_crith_fig <- make_network_figure(
   fit = apis.CrithidiaPresence,
@@ -55,49 +93,75 @@ apis_crith_fig <- make_network_figure(
   succ_col = "GenusCrithidiaPresence",
   trials_col = "GenusScreened",
   metrics_spec = metrics,
-  ncol=4
+  ncol=3,
+  show_points = FALSE
 )
 ggsave("figures/network_apis.CrithidiaPresence.pdf",
        plot = apis_crith_fig,  width = 20, height = 5)
 
-# ---- Melissodes ----
-load("saved/network_melissodes_CrithidiaPresence.Rdata")  # object: melissodes.CrithidiaPresence
-mel_net <- melissodes
-mel_crith_fig <- make_network_figure(
-  fit = melissodes.CrithidiaPresence,
-  raw_df = mel_net,
-  outcome_label = "Crithidia prevalence",
-  prop_col = "PropGenusCrithidiaPresence",
-  succ_col = "GenusCrithidiaPresence",
-  trials_col = "GenusScreened",
-  metrics_spec = metrics,
-  ncol=4
-)
-ggsave("figures/network_melissodes.CrithidiaPresence.pdf",
-       plot = mel_crith_fig, width = 20, height = 5)
+## ##  Melissodes 
+## load("saved/network_melissodes_CrithidiaPresence.Rdata")
+## object: melissodes.CrithidiaPresence
+## mel_net <- melissodes
+## mel_crith_fig <- make_network_figure(
+##   fit = melissodes.CrithidiaPresence,
+##   raw_df = mel_net,
+##   outcome_label = "Crithidia prevalence",
+##   prop_col = "PropGenusCrithidiaPresence",
+##   succ_col = "GenusCrithidiaPresence",
+##   trials_col = "GenusScreened",
+##   metrics_spec = metrics,
+##   ncol=3
+## )
+## ggsave("figures/network_melissodes.CrithidiaPresence.pdf",
+##        plot = mel_crith_fig, width = 20, height = 5)
 
 ## ============================================================
 ## APICYSTIS — Bombus / Apis / Melissodes
-## (Assumes analogous saved fits & columns; adjust names if needed)
 ## ============================================================
 
-# ---- Bombus ----
-load("saved/network_bombus_ApicystisSpp.Rdata")  # object: bombus.ApicystisSpp
+##  Bombus 
+load("saved/network_bombus_ApicystisSpp.Rdata")
+## object: bombus.ApicystisSpp
 bombus_apic_fig <- make_network_figure(
   fit = bombus.ApicystisSpp,
-  raw_df = bombus_net,  # same subset rule as Crithidia
+  raw_df = bombus_net,  ## same subset rule as Crithidia
   outcome_label = "Apicystis prevalence",
   prop_col = "PropGenusApicystisSpp",
   succ_col = "GenusApicystisSpp",
   trials_col = "GenusScreened",
   metrics_spec = metrics,
-  ncol=4
+  ncol=3,
+  show_points = FALSE
 )
 ggsave("figures/network_bombus.ApicystisSpp.pdf",
        plot = bombus_apic_fig, width = 20, height = 5)
 
-# ---- Apis ----
-load("saved/network_apis_ApicystisSpp.Rdata")    # object: apis.ApicystisSpp
+
+
+## black talk theme + points off
+load("saved/network_bombus_ApicystisSpp.Rdata")
+## object: bombus.ApicystisSpp
+bombus_apic_fig <- make_network_figure(
+  fit = bombus.ApicystisSpp,
+  raw_df = bombus_net,  ## same subset rule as Crithidia
+  outcome_label = "Apicystis prevalence",
+  prop_col = "PropGenusApicystisSpp",
+  succ_col = "GenusApicystisSpp",
+  trials_col = "GenusScreened",
+  metrics_spec = metrics,
+  ncol=3,
+  show_points = FALSE,
+  theme = "talk_black"
+)
+ggsave("figures/network_bombus.ApicystisSpp_dark.pdf",
+       plot = bombus_apic_fig, width = 20, height = 5)
+
+
+
+##  Apis 
+load("saved/network_apis_ApicystisSpp.Rdata")
+## object: apis.ApicystisSpp
 apis_apic_fig <- make_network_figure(
   fit = apis.ApicystisSpp,
   raw_df = apis_net,
@@ -106,22 +170,26 @@ apis_apic_fig <- make_network_figure(
   succ_col = "GenusApicystisSpp",
   trials_col = "GenusScreened",
   metrics_spec = metrics,
-  ncol=4
+  ncol=3,
+  show_points = FALSE
 )
 ggsave("figures/network_apis.ApicystisSpp.pdf",
        plot = apis_apic_fig, width = 20, height = 5)
 
-# ---- Melissodes ----
-load("saved/network_melissodes_ApicystisSpp.Rdata")  # object: melissodes.ApicystisSpp
-mel_apic_fig <- make_network_figure(
-  fit = melissodes.ApicystisSpp,
-  raw_df = mel_net,
-  outcome_label = "Apicystis prevalence",
-  prop_col = "PropGenusApicystisSpp",
-  succ_col = "GenusApicystisSpp",
-  trials_col = "GenusScreened",
-  metrics_spec = metrics,
-   ncol=4
-)
-ggsave("figures/network_melissodes.ApicystisSpp.pdf",
-       plot = mel_apic_fig, width = 20, height = 5)
+## ##  Melissodes 
+## load("saved/network_melissodes_ApicystisSpp.Rdata")
+## object: melissodes.ApicystisSpp
+## mel_apic_fig <- make_network_figure(
+##   fit = melissodes.ApicystisSpp,
+##   raw_df = mel_net,
+##   outcome_label = "Apicystis prevalence",
+##   prop_col = "PropGenusApicystisSpp",
+##   succ_col = "GenusApicystisSpp",
+##   trials_col = "GenusScreened",
+##   metrics_spec = metrics,
+##    ncol=3
+## )
+## ggsave("figures/network_melissodes.ApicystisSpp.pdf",
+##        plot = mel_apic_fig, width = 20, height = 5)
+
+
