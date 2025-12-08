@@ -41,16 +41,40 @@ sf.par$SampleRound <- as.numeric(sf.par$SampleRound)
 pnw.par$SampleRound <- as.numeric(pnw.par$SampleRound)
 hja.par$SampleRound <- as.numeric(hja.par$SampleRound)
 
-par.mets <- rbind(pnw.par, sf.par, si.par, hja.par)
+## drop excess columns
+hja.par <- hja.par[,colnames(hja.par) %in% colnames(si.par)]
+pnw.par <- pnw.par[,colnames(pnw.par) %in% colnames(si.par)]
+
+colnames(si.par)[!colnames(si.par) %in% colnames(pnw.par)] 
+
+par.mets <- list(pnw.par, sf.par, si.par, hja.par)
+
+lapply(par.mets, dim)
+
+par.mets <- lapply(par.mets, function(x){
+  x[, colnames(si.par)]
+})
+
+## check all the column names are perfect
+lapply(par.mets, function(x){
+  identical(colnames(x), colnames(si.par))
+})
+
+par.mets <-  do.call(rbind, par.mets)
+
+## number screened
+tapply(par.mets$SpScreened, par.mets$Project, sum)
 
 par.mets <- par.mets[!is.na(par.mets$GenusSpecies),]
 par.mets <- par.mets[par.mets$GenusSpecies != "",]
+
+tapply(par.mets$SpScreened, par.mets$Project, sum)
 
 syrphid.genera <- c("Eristalis", "Eristalinus",
                     "Copestylum", "Fazia", "Helophilus",
                     "Paragus", "Syritta", "Syrphus", "Toxomerus",
                     "Eupeodes", "Allograpta", "Melanostoma",
-                    "Sphaerophoria", "Erynnis")
+                    "Sphaerophoria", "Erynnis", "Chrysotoxum")
 
 syrphids <- data.frame(par.mets[par.mets$Genus %in% syrphid.genera &
                                 par.mets$SpScreened > 0,])
@@ -58,9 +82,14 @@ syrphids <- data.frame(par.mets[par.mets$Genus %in% syrphid.genera &
 par.mets <- par.mets[!par.mets$Genus %in% syrphid.genera,]
 
 par.mets <- par.mets[par.mets$SpScreened != 0,]
+tapply(par.mets$SpScreened, par.mets$Project, sum)
+
 
 sort(table(par.mets$GenusSpecies))
-table(par.mets$GenusSpecies, par.mets$Project)
+check.par <- table(par.mets$GenusSpecies, par.mets$Project)
+check.par
+## number of species-site-sr combinations in each project
+colSums(check.par)
 
 par.mets$PropGenusCrithidiaPresence <-
   par.mets$GenusCrithidiaPresence/par.mets$GenusScreened
@@ -98,21 +127,11 @@ par.mets$ProjectSubProject <- fix.white.space(paste(par.mets$Project,
 par.mets$ProjectSubProject[par.mets$SubProject == ""] <-
   par.mets$Project[par.mets$SubProject == ""]
 
-## to check over data that needs to be dropped
-hja.2024 <- par.mets %>% 
-     filter((Project == "HJA" & Year == 2024))
-     
-
-dim(par.mets)
-par.mets <- par.mets %>% 
-  filter(!(Project == "HJA" & Year == 2024))
-dim(par.mets)
-
-
 par.mets$NetworkKey <- paste(par.mets$Site, par.mets$Year,
                              par.mets$SampleRound, sep=".")
 
-
+## checking nothing is dropped again
+tapply(par.mets$SpScreened, par.mets$Project, sum)
 save(par.mets,
      file="../parasite_networks/data/sp_genus_site_mets.RData")
 
