@@ -36,18 +36,41 @@
 get_effect_df <- function(fit, effect, re_formula = NA) {
   ce <- brms::conditional_effects(fit, re_formula = re_formula)
   keys <- names(ce)
-  hit  <- keys[which.max(grepl(effect, keys, fixed = TRUE))]
-  if (!length(hit) || is.na(hit)) stop("Effect '", effect, "' not found.")
-  df <- ce[[hit]]
-  list(df = df,
-       xcol = if (effect %in% names(df)) effect else names(df)[grepl(effect, names(df), fixed = TRUE)][1])
+
+  matches <- grepl(effect, keys, fixed = TRUE)
+  if (!any(matches)) {
+    stop("Effect '", effect, "' not found among: ", paste(keys, collapse = ", "))
+  }
+
+  hit <- keys[which(matches)[1]]
+  df  <- ce[[hit]]
+
+  xcol <- if (effect %in% names(df)) {
+    effect
+  } else {
+    nm_matches <- grepl(effect, names(df), fixed = TRUE)
+    if (!any(nm_matches)) {
+      stop("Could not find x column for effect '", effect, "' in conditional_effects table.")
+    }
+    names(df)[which(nm_matches)[1]]
+  }
+
+  list(df = df, xcol = xcol, key = hit)
 }
+
 
 # Linetype from coefficient: solid if posterior sign prob >= prob, dashed otherwise
 linetype_from_coef <- function(fit, coef_term, prob = 0.95) {
   fe <- brms::fixef(fit, probs = c((1-prob)/2, 1-(1-prob)/2))
-  row <- if (coef_term %in% rownames(fe)) coef_term else {
-    rn <- rownames(fe); rn[which.max(grepl(coef_term, rn, fixed = TRUE))]
+  row <- if (coef_term %in% rownames(fe)) {
+    coef_term
+  } else {
+    rn <- rownames(fe)
+    matches <- grepl(coef_term, rn, fixed = TRUE)
+    if (!any(matches)) {
+      stop("Coefficient term '", coef_term, "' not found among: ", paste(rn, collapse = ", "))
+    }
+    rn[which(matches)[1]]
   }
   draws <- try(posterior::as_draws_df(fit), silent = TRUE)
   if (inherits(draws, "try-error"))
@@ -80,9 +103,22 @@ add_ci_gradient <- function(p, fit, effect_key, re_formula = NA,
   for (i in seq_along(probs)) {
     ce_i <- brms::conditional_effects(fit, re_formula = re_formula, prob = probs[i])
     keys <- names(ce_i)
-    hit  <- keys[which.max(grepl(effect_key, keys, fixed = TRUE))]
+    matches <- grepl(effect_key, keys, fixed = TRUE)
+    if (!any(matches)) {
+      stop("Effect '", effect_key, "' not found among: ", paste(keys, collapse = ", "))
+    }
+    hit  <- keys[which(matches)[1]]
     df_i <- ce_i[[hit]]
-    xcol <- if (effect_key %in% names(df_i)) effect_key else names(df_i)[grepl(effect_key, names(df_i), fixed = TRUE)][1]
+
+    xcol <- if (effect_key %in% names(df_i)) {
+      effect_key
+    } else {
+      nm_matches <- grepl(effect_key, names(df_i), fixed = TRUE)
+      if (!any(nm_matches)) {
+        stop("Could not find x column for effect '", effect_key, "' in conditional_effects table.")
+      }
+      names(df_i)[which(nm_matches)[1]]
+    }
     p <- p + ggplot2::geom_ribbon(
       data = df_i,
       ggplot2::aes(x = .data[[xcol]], ymin = lower__, ymax = upper__),
@@ -105,10 +141,6 @@ plot_network_panel <- function(fit, effect_key, coef_term,
   df <- ef$df; x_in_df <- ef$xcol
   lt <- linetype_from_coef(fit, coef_term, prob = 0.95)
 
-  pts <- prep_points_network(
-    raw_df, x = xcol, prop_col = prop_col,
-    succ_col = succ_col, trials_col = trials_col
-  )
 
   is_black <- .is_talk_black(theme)
 
@@ -119,6 +151,11 @@ plot_network_panel <- function(fit, effect_key, coef_term,
     ggplot2::geom_line(linewidth = 1.6, linetype = lt, colour = line_col)
 
   if (isTRUE(show_points)) {
+    pts <- prep_points_network(
+      raw_df, x = xcol, prop_col = prop_col,
+      succ_col = succ_col, trials_col = trials_col
+    )
+
     p <- p + ggplot2::geom_point(
       data = pts,
       ggplot2::aes(x = x, y = y, color = grp),
@@ -159,7 +196,8 @@ make_network_figure <- function(fit, raw_df, outcome_label,
                                 theme = "ms") {
 
   panels <- purrr::pmap(metrics_spec, function(effect_key, coef_term, xcol, xlab) {
-    try(
+
+    out <- try(
       plot_network_panel(
         fit, effect_key, coef_term,
         raw_df, xcol, prop_col, succ_col, trials_col,
@@ -170,6 +208,16 @@ make_network_figure <- function(fit, raw_df, outcome_label,
       ),
       silent = TRUE
     )
+
+    if (inherits(out, "try-error")) {
+      msg <- conditionMessage(attr(out, "condition"))
+      message("
+❌ Panel failed: ", effect_key, " (", coef_term, ")
+", msg, "
+")
+    }
+
+    out
   })
 
   panels <- Filter(function(x) !inherits(x, "try-error"), panels)
@@ -183,74 +231,196 @@ make_network_figure <- function(fit, raw_df, outcome_label,
   )
 }
 
+
+
+# Build a list of ggplot panels for one outcome across metrics (internal utility)
+make_network_panels <- function(fit, raw_df, outcome_label,
+                                prop_col, succ_col, trials_col,
+                                metrics_spec,
+                                show_points = TRUE,
+                                theme = "ms",
+                                ylab_left_only = TRUE) {
+
+  panels <- purrr::map(seq_len(nrow(metrics_spec)), function(i) {
+    effect_key <- metrics_spec$effect_key[[i]]
+    coef_term  <- metrics_spec$coef_term[[i]]
+    xcol       <- metrics_spec$xcol[[i]]
+    xlab       <- metrics_spec$xlab[[i]]
+
+    ylab_i <- if (isTRUE(ylab_left_only) && i != 1) "" else outcome_label
+
+    out <- try(
+      plot_network_panel(
+        fit, effect_key, coef_term,
+        raw_df, xcol, prop_col, succ_col, trials_col,
+        xlab, ylab = ylab_i,
+        re_formula = NA,
+        show_points = show_points,
+        theme = theme
+      ),
+      silent = TRUE
+    )
+
+    if (inherits(out, "try-error")) {
+      msg <- conditionMessage(attr(out, "condition"))
+      message("\n❌ Panel failed: ", effect_key, " (", coef_term, ")\n", msg, "\n")
+    }
+
+    out
+  })
+
+  panels
+}
+
+
+# Manuscript-style figure: stack two parasite outcomes (rows) with network metrics as columns.
+# - Panels are labeled A), B), C), ... going left-to-right across the first row, then the second row.
+# - By default, only the leftmost panel in each row shows the y-axis label.
+make_stacked_parasite_network_figure <- function(
+  fit_top, fit_bottom,
+  raw_df_top, raw_df_bottom,
+  top_outcome_label, bottom_outcome_label,
+  top_prop_col, top_succ_col, top_trials_col,
+  bottom_prop_col, bottom_succ_col, bottom_trials_col,
+  metrics_spec,
+  ncol = nrow(metrics_spec),
+  show_points = FALSE,
+  theme = "ms",
+  label_suffix = ")",
+  allow_partial = FALSE
+) {
+
+  panels_top <- make_network_panels(
+    fit = fit_top,
+    raw_df = raw_df_top,
+    outcome_label = top_outcome_label,
+    prop_col = top_prop_col,
+    succ_col = top_succ_col,
+    trials_col = top_trials_col,
+    metrics_spec = metrics_spec,
+    show_points = show_points,
+    theme = theme,
+    ylab_left_only = TRUE
+  )
+
+  panels_bottom <- make_network_panels(
+    fit = fit_bottom,
+    raw_df = raw_df_bottom,
+    outcome_label = bottom_outcome_label,
+    prop_col = bottom_prop_col,
+    succ_col = bottom_succ_col,
+    trials_col = bottom_trials_col,
+    metrics_spec = metrics_spec,
+    show_points = show_points,
+    theme = theme,
+    ylab_left_only = TRUE
+  )
+
+  panels <- c(panels_top, panels_bottom)
+
+  is_err <- vapply(panels, inherits, logical(1), what = "try-error")
+  if (any(is_err) && !isTRUE(allow_partial)) {
+    stop("One or more panels failed to build (", sum(is_err), " of ", length(panels), "). See printed errors above.")
+  }
+
+  panels_ok <- panels[!is_err]
+  if (!length(panels_ok)) stop("No panels could be constructed.")
+
+  labels <- paste0(LETTERS[seq_along(panels_ok)], label_suffix)
+
+  ggpubr::ggarrange(
+    plotlist = panels_ok,
+    labels = labels,
+    ncol = ncol,
+    nrow = 2,
+    common.legend = TRUE,
+    legend = "bottom"
+  )
+}
+
+
 # =============================================================================
 # Appended themes from ggplotThemes.txt
 # =============================================================================
 
-theme_talk_black <- function(base_size=14, base_family="sans") {
-   library(grid)
-   library(ggthemes)
-   (theme_foundation(base_size=base_size, base_family=base_family)
-      + theme(plot.title = element_text(face = "bold", colour = '#ffffb3',
-                                        size = rel(1.2), hjust = 0.5, margin = margin(0,0,20,0)),
-              text = element_text(),
-              panel.background = element_rect(colour = NA, fill = 'black'),
-              plot.background = element_rect(colour = NA, fill = 'black'),
-              panel.border = element_rect(colour = NA),
-              axis.title = element_text(face = "bold",size = rel(1), colour = 'white'),
-              axis.title.y = element_text(angle=90,vjust =2),
-              axis.title.x = element_text(vjust = -0.2),
-              axis.text = element_text(colour = 'white'),
-              axis.line.x = element_line(colour="white"),
-              axis.line.y = element_line(colour="white"),
-              axis.ticks = element_line(colour="white"),
-              panel.grid.major = element_blank(),
-              panel.grid.minor = element_blank(),
-              legend.background = element_rect(fill ='black'),
-              legend.text = element_text(color = 'white'),
-              legend.key = element_rect(colour = NA, fill = 'black'),
-              legend.position = "bottom",
-              legend.direction = "horizontal",
-              legend.box = "vetical",
-              legend.key.size= unit(0.5, "cm"),
-              legend.margin = unit(0, "cm"),
-              legend.title = element_text(face="italic", colour = 'white'),
-              plot.margin=unit(c(10,5,5,5),"mm"),
-              strip.background=element_rect(colour="#2D3A4C",fill="black"),
-              strip.text = element_text(face="bold", colour = 'white')
-      ))
+theme_talk_black <- function(base_size = 14, base_family = "sans") {
+  base <- if (requireNamespace("ggthemes", quietly = TRUE)) {
+    ggthemes::theme_foundation(base_size = base_size, base_family = base_family)
+  } else {
+    ggplot2::theme_minimal(base_size = base_size, base_family = base_family)
+  }
+
+  base + ggplot2::theme(
+    plot.title = ggplot2::element_text(
+      face = "bold", colour = "#ffffb3",
+      size = ggplot2::rel(1.2), hjust = 0.5,
+      margin = ggplot2::margin(0, 0, 20, 0)
+    ),
+    text = ggplot2::element_text(),
+    panel.background = ggplot2::element_rect(colour = NA, fill = "black"),
+    plot.background = ggplot2::element_rect(colour = NA, fill = "black"),
+    panel.border = ggplot2::element_rect(colour = NA),
+    axis.title = ggplot2::element_text(face = "bold", size = ggplot2::rel(1), colour = "white"),
+    axis.title.y = ggplot2::element_text(angle = 90, vjust = 2),
+    axis.title.x = ggplot2::element_text(vjust = -0.2),
+    axis.text = ggplot2::element_text(colour = "white"),
+    axis.line.x = ggplot2::element_line(colour = "white"),
+    axis.line.y = ggplot2::element_line(colour = "white"),
+    axis.ticks = ggplot2::element_line(colour = "white"),
+    panel.grid.major = ggplot2::element_blank(),
+    panel.grid.minor = ggplot2::element_blank(),
+    legend.background = ggplot2::element_rect(fill = "black"),
+    legend.text = ggplot2::element_text(color = "white"),
+    legend.key = ggplot2::element_rect(colour = NA, fill = "black"),
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.key.size = grid::unit(0.5, "cm"),
+    legend.margin = grid::unit(0, "cm"),
+    legend.title = ggplot2::element_text(face = "italic", colour = "white"),
+    plot.margin = grid::unit(c(10, 5, 5, 5), "mm"),
+    strip.background = ggplot2::element_rect(colour = "#2D3A4C", fill = "black"),
+    strip.text = ggplot2::element_text(face = "bold", colour = "white")
+  )
 }
 
-theme_ms <- function(base_size=14, base_family="sans") {
-   library(grid)
-   library(ggthemes)
-   (theme_foundation(base_size=base_size, base_family=base_family)
-      + theme(plot.title = element_text(face = "bold", colour = '#ffffb3',
-                                        size = rel(1.2), hjust = 0.5,
-                                        margin = margin(0,0,20,0)),
-              text = element_text(),
-              panel.background = element_rect(colour = NA, fill = 'white'),
-              plot.background = element_rect(colour = NA, fill = 'white'),
-              panel.border = element_rect(colour = NA),
-              axis.title = element_text(face = "bold",size = rel(1), colour = 'black'),
-              axis.title.y = element_text(angle=90,vjust =2),
-              axis.title.x = element_text(vjust = 0),
-              axis.text = element_text(colour = 'black'),
-              axis.line.x = element_line(colour="black"),
-              axis.line.y = element_line(colour="black"),
-              axis.ticks = element_line(colour="black"),
-              panel.grid.major = element_blank(),
-              panel.grid.minor = element_blank(),
-              legend.position = "none",
-              legend.background = element_rect(fill ='white'),
-              legend.text = element_text(color = 'black'),
-              legend.key = element_rect(colour = NA, fill = 'white'),
-              legend.direction = "horizontal",
-              legend.box = "vetical",
-              legend.key.size= unit(0.5, "cm"),
-              legend.title = element_text(face="italic", colour = 'black'),
-              plot.margin=unit(c(5,5,5,5),"mm"),
-              strip.background=element_rect(colour="#2D3A4C",fill="white"),
-              strip.text = element_text(face="bold", colour = 'black')
-      ))
+
+theme_ms <- function(base_size = 14, base_family = "sans") {
+  base <- if (requireNamespace("ggthemes", quietly = TRUE)) {
+    ggthemes::theme_foundation(base_size = base_size, base_family = base_family)
+  } else {
+    ggplot2::theme_minimal(base_size = base_size, base_family = base_family)
+  }
+
+  base + ggplot2::theme(
+    plot.title = ggplot2::element_text(
+      face = "bold", colour = "#ffffb3",
+      size = ggplot2::rel(1.2), hjust = 0.5,
+      margin = ggplot2::margin(0, 0, 20, 0)
+    ),
+    text = ggplot2::element_text(),
+    panel.background = ggplot2::element_rect(colour = NA, fill = "white"),
+    plot.background = ggplot2::element_rect(colour = NA, fill = "white"),
+    panel.border = ggplot2::element_rect(colour = NA),
+    axis.title = ggplot2::element_text(face = "bold", size = ggplot2::rel(1), colour = "black"),
+    axis.title.y = ggplot2::element_text(angle = 90, vjust = 2),
+    axis.title.x = ggplot2::element_text(vjust = 0),
+    axis.text = ggplot2::element_text(colour = "black"),
+    axis.line.x = ggplot2::element_line(colour = "black"),
+    axis.line.y = ggplot2::element_line(colour = "black"),
+    axis.ticks = ggplot2::element_line(colour = "black"),
+    panel.grid.major = ggplot2::element_blank(),
+    panel.grid.minor = ggplot2::element_blank(),
+    legend.position = "none",
+    legend.background = ggplot2::element_rect(fill = "white"),
+    legend.text = ggplot2::element_text(color = "black"),
+    legend.key = ggplot2::element_rect(colour = NA, fill = "white"),
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    legend.key.size = grid::unit(0.5, "cm"),
+    legend.title = ggplot2::element_text(face = "italic", colour = "black"),
+    plot.margin = grid::unit(c(5, 5, 5, 5), "mm"),
+    strip.background = ggplot2::element_rect(colour = "#2D3A4C", fill = "white"),
+    strip.text = ggplot2::element_text(face = "bold", colour = "black")
+  )
 }

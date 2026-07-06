@@ -10,7 +10,7 @@ library(viridis)
 
 source("src/misc.R")
 source("src/ggplotThemes.R")
-source("src/spNetworkPlotting.R")
+source("src/spNetworkPlotting_fixed.R")
 
 ## *************************************************************
 ## Bombus - Crithidia
@@ -304,137 +304,121 @@ ggsave("figures/apis.ApicystisSpp.pdf",
 ## ggsave("figures/melissodes.ApicystisSpp.pdf",
 ##        plot = melissodes.ApicystisSpp_fig, width = 22, height = 5)
 
-
 ## *************************************************************
-## Manuscript figures: stack parasites (CrithidiaPresence / ApicystisSpp) for each host
+## Manuscript figures: stack hosts (Bombus / Apis / Melissodes) for each parasite
 ##   - columns: network metrics
-##   - rows: parasites
+##   - rows: hosts
 ##   - panel labels: A), B), C)... going left-to-right across rows
-##   - one figure per host (Bombus / Apis / Melissodes)
 ## *************************************************************
 
-metrics_species_all <- tibble::tibble(
+metrics_species <- tibble::tibble(
   effect = c("zweighted.betweenness", "zweighted.closeness", "zdegree", "zd", "zHBOverlap"),
   x      = c("zweighted.betweenness", "zweighted.closeness", "zdegree", "zd", "zHBOverlap"),
   xlab   = c("Betweenness", "Closeness", "Degree", "d", "Apis overlap")
 )
 
-metrics_species_apis <- metrics_species_all |>
-  dplyr::filter(effect != "zHBOverlap")  # Apis models typically omit overlap
+# ---- 1) CrithidiaPresence (stack hosts) ----
+fits_crith <- list()
+raw_crith  <- list()
+host_labs_crith <- c()
 
-parasite_order  <- c("CrithidiaPresence", "ApicystisSpp")
-parasite_labels <- c("Crithidia", "Apicystis")
-succ_cols       <- c(CrithidiaPresence = "SpCrithidiaPresence",
-                     ApicystisSpp     = "SpApicystisSpp")
-outcome_labels  <- c(CrithidiaPresence = "Crithidia prevalence",
-                     ApicystisSpp     = "Apicystis prevalence")
+# Bombus
+load("saved/bombus_CrithidiaPresence.Rdata")
+sub.bombus <- bombus %>% filter(!ProjectSubProject %in% c("SF", "PN-CA-FIRE"))
+fits_crith$bombus <- bombus.CrithidiaPresence
+raw_crith$bombus  <- sub.bombus
+host_labs_crith   <- c(host_labs_crith, "Bombus")
 
-# ---- 1) Bombus (stack parasites) ----
-if (file.exists("saved/bombus_CrithidiaPresence.Rdata") &&
-    file.exists("saved/bombus_ApicystisSpp.Rdata")) {
+# Apis
+load("saved/apis_CrithidiaPresence.Rdata")
+sub.apis <- apis[!apis$ProjectSubProject %in% c("PN-CA-FIRE", "PN-COAST", "SF"),]
+fits_crith$apis <- apis.CrithidiaPresence
+raw_crith$apis  <- sub.apis
+host_labs_crith <- c(host_labs_crith, "Apis")
 
-  load("saved/bombus_CrithidiaPresence.Rdata")
-  load("saved/bombus_ApicystisSpp.Rdata")
-
-  sub.bombus <- bombus %>%
-    filter(!ProjectSubProject %in% c("SF", "PN-CA-FIRE"))
-
-  bombus_species_parasites_stacked <- make_stacked_parasite_species_network_figure(
-    fits_by_parasite = list(
-      CrithidiaPresence = bombus.CrithidiaPresence,
-      ApicystisSpp     = bombus.ApicystisSpp
-    ),
-    raw_df         = sub.bombus,
-    outcome_labels = outcome_labels,
-    succ_cols      = succ_cols,
-    trials_cols    = "SpScreened",
-    metrics_spec   = metrics_species_all,
-    parasite_order = parasite_order,
-    parasite_labels = parasite_labels,
-    theme          = "ms",
-    show_points    = FALSE,
-    # Put metric names on the x-axis (not as top column titles)
-    add_col_headers = FALSE,
-    add_row_labels  = FALSE,
-    label_style     = "paren",
-    common_legend   = TRUE,
-    legend          = "bottom"
-  )
-
-  ggsave("figures/species_network_bombus_parasites_stacked.pdf",
-         plot = bombus_species_parasites_stacked,
-         width = 22, height = 10)
-}
-
-# ---- 2) Apis (stack parasites) ----
-if (file.exists("saved/apis_CrithidiaPresence.Rdata") &&
-    file.exists("saved/apis_ApicystisSpp.Rdata")) {
-
-  load("saved/apis_CrithidiaPresence.Rdata")
-  load("saved/apis_ApicystisSpp.Rdata")
-
-  sub.apis <- apis[!apis$ProjectSubProject %in% c("PN-CA-FIRE", "PN-COAST", "SF"),]
-
-  apis_species_parasites_stacked <- make_stacked_parasite_species_network_figure(
-    fits_by_parasite = list(
-      CrithidiaPresence = apis.CrithidiaPresence,
-      ApicystisSpp     = apis.ApicystisSpp
-    ),
-    raw_df         = sub.apis,
-    outcome_labels = outcome_labels,
-    succ_cols      = succ_cols,
-    trials_cols    = "SpScreened",
-    metrics_spec   = metrics_species_apis,
-    parasite_order = parasite_order,
-    parasite_labels = parasite_labels,
-    theme          = "ms",
-    show_points    = FALSE,
-    # Put metric names on the x-axis (not as top column titles)
-    add_col_headers = FALSE,
-    add_row_labels  = FALSE,
-    label_style     = "paren",
-    common_legend   = TRUE,
-    legend          = "bottom"
-  )
-
-  ggsave("figures/species_network_apis_parasites_stacked.pdf",
-         plot = apis_species_parasites_stacked,
-         width = 20, height = 10)
-}
-
-# ---- 3) Melissodes (stack parasites; optional) ----
-if (file.exists("saved/melissodes_CrithidiaPresence.Rdata") &&
-    file.exists("saved/melissodes_ApicystisSpp.Rdata")) {
-
+# Melissodes (optional; included if the model file exists)
+if (file.exists("saved/melissodes_CrithidiaPresence.Rdata")) {
   load("saved/melissodes_CrithidiaPresence.Rdata")
-  load("saved/melissodes_ApicystisSpp.Rdata")
-
   sub.mel <- melissodes
-
-  mel_species_parasites_stacked <- make_stacked_parasite_species_network_figure(
-    fits_by_parasite = list(
-      CrithidiaPresence = melissodes.CrithidiaPresence,
-      ApicystisSpp     = melissodes.ApicystisSpp
-    ),
-    raw_df         = sub.mel,
-    outcome_labels = outcome_labels,
-    succ_cols      = succ_cols,
-    trials_cols    = "SpScreened",
-    metrics_spec   = metrics_species_all,
-    parasite_order = parasite_order,
-    parasite_labels = parasite_labels,
-    theme          = "ms",
-    show_points    = FALSE,
-    # Put metric names on the x-axis (not as top column titles)
-    add_col_headers = FALSE,
-    add_row_labels  = FALSE,
-    label_style     = "paren",
-    common_legend   = TRUE,
-    legend          = "bottom"
-  )
-
-  ggsave("figures/species_network_melissodes_parasites_stacked.pdf",
-         plot = mel_species_parasites_stacked,
-         width = 22, height = 10)
+  fits_crith$melissodes <- melissodes.CrithidiaPresence
+  raw_crith$melissodes  <- sub.mel
+  host_labs_crith <- c(host_labs_crith, "Melissodes")
 }
 
+species_Crithidia_hosts_stacked <- make_stacked_host_species_network_figure(
+  fits_by_host   = fits_crith,
+  raw_by_host    = raw_crith,
+  outcome_label  = "Crithidia prevalence",
+  succ_col       = "SpCrithidiaPresence",
+  trials_col     = "SpScreened",
+  metrics_spec   = metrics_species,
+  host_order     = names(fits_crith),
+  host_labels    = host_labs_crith,
+  theme          = "ms",
+  show_points    = FALSE,
+  add_col_headers = TRUE,
+  add_row_labels  = TRUE,
+  label_style     = "paren",
+  common_legend   = TRUE,
+  legend          = "bottom"
+)
+
+ggsave(
+  "figures/species_CrithidiaPresence_hosts_stacked.pdf",
+  plot   = species_Crithidia_hosts_stacked,
+  width  = 22,
+  height = 3.6 * length(fits_crith) + 2
+)
+
+# ---- 2) ApicystisSpp (stack hosts) ----
+fits_api <- list()
+raw_api  <- list()
+host_labs_api <- c()
+
+# Bombus
+load("saved/bombus_ApicystisSpp.Rdata")
+sub.bombus <- bombus %>% filter(!ProjectSubProject %in% c("SF", "PN-CA-FIRE"))
+fits_api$bombus <- bombus.ApicystisSpp
+raw_api$bombus  <- sub.bombus
+host_labs_api   <- c(host_labs_api, "Bombus")
+
+# Apis
+load("saved/apis_ApicystisSpp.Rdata")
+sub.apis <- apis[!apis$ProjectSubProject %in% c("PN-CA-FIRE", "PN-COAST", "SF"),]
+fits_api$apis <- apis.ApicystisSpp
+raw_api$apis  <- sub.apis
+host_labs_api <- c(host_labs_api, "Apis")
+
+# Melissodes (optional)
+if (file.exists("saved/melissodes_ApicystisSpp.Rdata")) {
+  load("saved/melissodes_ApicystisSpp.Rdata")
+  sub.mel <- melissodes
+  fits_api$melissodes <- melissodes.ApicystisSpp
+  raw_api$melissodes  <- sub.mel
+  host_labs_api <- c(host_labs_api, "Melissodes")
+}
+
+species_Apicystis_hosts_stacked <- make_stacked_host_species_network_figure(
+  fits_by_host   = fits_api,
+  raw_by_host    = raw_api,
+  outcome_label  = "Apicystis prevalence",
+  succ_col       = "SpApicystisSpp",
+  trials_col     = "SpScreened",
+  metrics_spec   = metrics_species,
+  host_order     = names(fits_api),
+  host_labels    = host_labs_api,
+  theme          = "ms",
+  show_points    = FALSE,
+  add_col_headers = TRUE,
+  add_row_labels  = TRUE,
+  label_style     = "paren",
+  common_legend   = TRUE,
+  legend          = "bottom"
+)
+
+ggsave(
+  "figures/species_ApicystisSpp_hosts_stacked.pdf",
+  plot   = species_Apicystis_hosts_stacked,
+  width  = 22,
+  height = 3.6 * length(fits_api) + 2
+)

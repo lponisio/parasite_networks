@@ -86,6 +86,7 @@ tapply(par.mets$SpScreened, par.mets$Project, sum)
 
 
 sort(table(par.mets$GenusSpecies))
+
 check.par <- table(par.mets$GenusSpecies, par.mets$Project)
 check.par
 ## number of species-site-sr combinations in each project
@@ -118,9 +119,6 @@ par.mets$SubProject <- pnw.subprojects$SubProject[match(par.mets$Site,
                                                         pnw.subprojects$StandCode)]
 par.mets$SubProject[is.na(par.mets$SubProject)] <- ""
 
-## Remove bombus nest data
-par.mets <- par.mets[par.mets$SubProject != "OR-NEST",]
-
 par.mets$ProjectSubProject <- fix.white.space(paste(par.mets$Project,
                                     par.mets$SubProject, sep="-"))
 
@@ -130,10 +128,35 @@ par.mets$ProjectSubProject[par.mets$SubProject == ""] <-
 par.mets$NetworkKey <- paste(par.mets$Site, par.mets$Year,
                              par.mets$SampleRound, sep=".")
 
+
+cascades <- par.mets[par.mets$Project %in% c("HJA", "PN"),]
+save(cascades, file="../parasite_networks/data/cascades.RData")
+
 ## checking nothing is dropped again
+## Remove bombus nest data
+par.mets <- par.mets[!par.mets$SubProject %in% c("CA-FIRE", "OR-NEST"),]
+
 tapply(par.mets$SpScreened, par.mets$Project, sum)
 save(par.mets,
      file="../parasite_networks/data/sp_genus_site_mets.RData")
+
+
+ms.table <- par.mets[par.mets$Genus %in% c("Apis", "Bombus", "Melissodes"),]
+check.par <- ms.table%>%
+  group_by(GenusSpecies, ProjectSubProject) %>%
+  summarize(sum(SpScreened))
+
+wide <- check.par %>%                           
+  ungroup() %>%                               
+  select(GenusSpecies, ProjectSubProject, `sum(SpScreened)`) %>%
+  pivot_wider(
+    names_from  = ProjectSubProject,
+    values_from = `sum(SpScreened)`,
+    values_fill = 0
+  ) %>%
+  arrange(GenusSpecies) %>%
+    select(GenusSpecies, HJA, SI, `PN-COAST`, `PN-OR-FIRE`, SF)
+
 
 ## ********************************************************
 ## Networks
@@ -165,8 +188,11 @@ length(all.nets)
 save(all.nets,
      file="../parasite_networks/data/allNets.RData")
 
+out_file <- "network_figures/all_network_sankey_plots.pdf"
+source('../parasite_networks/src/plotNetworks.R')
+
 ## Calc network metrics
-N <-  99
+N <-  999
 mets <- lapply(all.nets, calcNetworkMetrics,
                N=N)
 save(mets,
@@ -205,10 +231,11 @@ save(network.metrics,
 ## Species level metrics
 ## *****************************************************
 
-N <- 99
+N <- 999
 sp.mets <- lapply(all.nets, SpCalcNetworkMetrics,
-               N=N, index=c("closeness", "betweenness",
-                            "degree", "d"))
+                  N=N, index=c("closeness", "betweenness", "degree", "d",
+                               "proportional generality",
+                               "normalised degree"))
 save(sp.mets,
      file="../parasite_networks/data/raw_sp_mets.RData")
 

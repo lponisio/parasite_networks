@@ -12,7 +12,6 @@ source("src/misc.R")
 source("src/ggplotThemes.R")
 source("src/genusNetworkPlotting.R")
 
-
 ## Metric map Model formula uses scale(connectance),
 ## scale(zweighted.NODF), scale(zH2),
 ## scale(zweighted.cluster.coefficient.HL), so fixef names are
@@ -45,7 +44,7 @@ metrics <- tibble::tribble(
 load("saved/network_bombus_CrithidiaPresence.Rdata")
 ## object: bombus.CrithidiaPresence
 
-bombus_net <- bombus |> filter(ProjectSubProject != "SF")
+bombus_net <- bombus |> filter(!ProjectSubProject %in% c("SF", "PN-CA-FIRE"))
 
 bombus_crith_fig <- make_network_figure(
   fit = bombus.CrithidiaPresence,
@@ -83,8 +82,8 @@ ggsave("figures/network_bombus.CrithidiaPresence_dark.pdf",
 
 ##  Apis 
 load("saved/network_apis_CrithidiaPresence.Rdata")
-## object: apis.CrithidiaPresence
-apis_net <- apis |> filter(!ProjectSubProject %in% c("PN-CA-FIRE","PN-COAST"))
+apis_net <- apis[!apis$ProjectSubProject %in% c("PN-CA-FIRE",
+                                               "PN-COAST", "SF"),]
 apis_crith_fig <- make_network_figure(
   fit = apis.CrithidiaPresence,
   raw_df = apis_net,
@@ -99,22 +98,22 @@ apis_crith_fig <- make_network_figure(
 ggsave("figures/network_apis.CrithidiaPresence.pdf",
        plot = apis_crith_fig,  width = 20, height = 5)
 
-## ##  Melissodes 
-## load("saved/network_melissodes_CrithidiaPresence.Rdata")
+##  Melissodes 
+load("saved/network_melissodes_CrithidiaPresence.Rdata")
 ## object: melissodes.CrithidiaPresence
-## mel_net <- melissodes
-## mel_crith_fig <- make_network_figure(
-##   fit = melissodes.CrithidiaPresence,
-##   raw_df = mel_net,
-##   outcome_label = "Crithidia prevalence",
-##   prop_col = "PropGenusCrithidiaPresence",
-##   succ_col = "GenusCrithidiaPresence",
-##   trials_col = "GenusScreened",
-##   metrics_spec = metrics,
-##   ncol=3
-## )
-## ggsave("figures/network_melissodes.CrithidiaPresence.pdf",
-##        plot = mel_crith_fig, width = 20, height = 5)
+mel_net <- melissodes[melissodes$ProjectSubProject %in% c("SF", "SI"),]
+mel_crith_fig <- make_network_figure(
+  fit = melissodes.CrithidiaPresence,
+  raw_df = mel_net,
+  outcome_label = "Crithidia prevalence",
+  prop_col = "PropGenusCrithidiaPresence",
+  succ_col = "GenusCrithidiaPresence",
+  trials_col = "GenusScreened",
+  metrics_spec = metrics,
+  ncol=3
+)
+ggsave("figures/network_melissodes.CrithidiaPresence.pdf",
+       plot = mel_crith_fig, width = 20, height = 5)
 
 ## ============================================================
 ## APICYSTIS — Bombus / Apis / Melissodes
@@ -176,20 +175,97 @@ apis_apic_fig <- make_network_figure(
 ggsave("figures/network_apis.ApicystisSpp.pdf",
        plot = apis_apic_fig, width = 20, height = 5)
 
-## ##  Melissodes 
-## load("saved/network_melissodes_ApicystisSpp.Rdata")
+##  Melissodes 
+load("saved/network_melissodes_ApicystisSpp.Rdata")
 ## object: melissodes.ApicystisSpp
-## mel_apic_fig <- make_network_figure(
-##   fit = melissodes.ApicystisSpp,
-##   raw_df = mel_net,
-##   outcome_label = "Apicystis prevalence",
-##   prop_col = "PropGenusApicystisSpp",
-##   succ_col = "GenusApicystisSpp",
-##   trials_col = "GenusScreened",
-##   metrics_spec = metrics,
-##    ncol=3
-## )
-## ggsave("figures/network_melissodes.ApicystisSpp.pdf",
-##        plot = mel_apic_fig, width = 20, height = 5)
+mel_apic_fig <- make_network_figure(
+  fit = melissodes.ApicystisSpp,
+  raw_df = mel_net,
+  outcome_label = "Apicystis prevalence",
+  prop_col = "PropGenusApicystisSpp",
+  succ_col = "GenusApicystisSpp",
+  trials_col = "GenusScreened",
+  metrics_spec = metrics,
+   ncol=3
+)
+ggsave("figures/network_melissodes.ApicystisSpp.pdf",
+       plot = mel_apic_fig, width = 20, height = 5)
 
+
+## ============================================================
+## MANUSCRIPT STACKED FIGURES (per host)
+## Rows = parasites (Crithidia, Apicystis); columns = network metrics
+## Panel labels run A), B), C) across the first row, then D), E), F) on the second row.
+## ============================================================
+
+# Bombus
+bombus_stack_fig <- make_stacked_parasite_network_figure(
+  fit_top = bombus.CrithidiaPresence,
+  fit_bottom = bombus.ApicystisSpp,
+  raw_df_top = bombus_net,
+  raw_df_bottom = bombus_net,
+  top_outcome_label = "Crithidia prevalence",
+  bottom_outcome_label = "Apicystis prevalence",
+  top_prop_col = "PropGenusCrithidiaPresence",
+  top_succ_col = "GenusCrithidiaPresence",
+  top_trials_col = "GenusScreened",
+  bottom_prop_col = "PropGenusApicystisSpp",
+  bottom_succ_col = "GenusApicystisSpp",
+  bottom_trials_col = "GenusScreened",
+  metrics_spec = metrics,
+  ncol = nrow(metrics),
+  show_points = FALSE,
+  theme = "ms"
+)
+
+ggsave("figures/network_bombus_parasites_stacked.pdf",
+       plot = bombus_stack_fig, width = 20, height = 10)
+
+
+# Apis
+apis_stack_fig <- make_stacked_parasite_network_figure(
+  fit_top = apis.CrithidiaPresence,
+  fit_bottom = apis.ApicystisSpp,
+  raw_df_top = apis_net,
+  raw_df_bottom = apis_net,
+  top_outcome_label = "Crithidia prevalence",
+  bottom_outcome_label = "Apicystis prevalence",
+  top_prop_col = "PropGenusCrithidiaPresence",
+  top_succ_col = "GenusCrithidiaPresence",
+  top_trials_col = "GenusScreened",
+  bottom_prop_col = "PropGenusApicystisSpp",
+  bottom_succ_col = "GenusApicystisSpp",
+  bottom_trials_col = "GenusScreened",
+  metrics_spec = metrics,
+  ncol = nrow(metrics),
+  show_points = FALSE,
+  theme = "ms"
+)
+
+ggsave("figures/network_apis_parasites_stacked.pdf",
+       plot = apis_stack_fig, width = 20, height = 10)
+
+
+# Melissodes
+mel_stack_fig <- make_stacked_parasite_network_figure(
+  fit_top = melissodes.CrithidiaPresence,
+  fit_bottom = melissodes.ApicystisSpp,
+  raw_df_top = mel_net,
+  raw_df_bottom = mel_net,
+  top_outcome_label = "Crithidia prevalence",
+  bottom_outcome_label = "Apicystis prevalence",
+  top_prop_col = "PropGenusCrithidiaPresence",
+  top_succ_col = "GenusCrithidiaPresence",
+  top_trials_col = "GenusScreened",
+  bottom_prop_col = "PropGenusApicystisSpp",
+  bottom_succ_col = "GenusApicystisSpp",
+  bottom_trials_col = "GenusScreened",
+  metrics_spec = metrics,
+  ncol = nrow(metrics),
+  show_points = FALSE,
+  theme = "ms"
+)
+
+ggsave("figures/network_melissodes_parasites_stacked.pdf",
+       plot = mel_stack_fig, width = 20, height = 10)
 

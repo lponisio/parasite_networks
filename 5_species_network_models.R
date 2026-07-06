@@ -4,14 +4,20 @@ setwd("~/University of Oregon Dropbox/Lauren Ponisio/")
 setwd("parasite_networks")
 source('src/writeResultsTable.R')
 source("src/init.R")
+source("src/makeBayesR2Table.R")
+source("src/makeModelOutputTables.R")
+
+bayes_R2_table <- init_bayes_R2_table()
+project_inclusion_table <- init_model_project_table()
 library(brms)
 library(lme4)
 library(glmmTMB)
-library(car)
 library(DHARMa)
-
+library(performance)
 load(file="data/sp_mets.RData")
 ncores <- 3
+model_seed <- 123
+set.seed(model_seed)
 
 net.cols <- c("zweighted.betweenness",
               "zweighted.closeness",
@@ -22,8 +28,6 @@ net.cols <- c("zweighted.betweenness",
 net.cols.scale <- paste0("scale(", net.cols, ")")
 
 par.cols <- c("SpApicystisSpp", "SpCrithidiaPresence")
-           ##   "SpNosemaBombi", "SpNosemaCeranae")
-
 
 par.formulas <- vector(mode="list", length=length(par.cols))
 freq.par.formulas <- vector(mode="list", length=length(par.cols))
@@ -31,11 +35,12 @@ names(freq.par.formulas) <- par.cols
 names(par.formulas) <- par.cols
 
 for(par in par.cols){
-  par.formulas[[par]] <- bf(formula(paste0(par, "| trials(SpScreened)~", 
-                                           paste(c(net.cols.scale, "(1|Site)",
-                                                   "(1|Year)", "ProjectSubProject",
-                                                   "(1|gr(GenusSpecies, cov = phylo_matrix))"),
-                                                 collapse="+"))), family="zero_inflated_binomial")
+  par.formulas[[par]] <- bf(formula(
+    paste0(par, "| trials(SpScreened)~", 
+           paste(c(net.cols.scale, "(1|Site)",
+                   "(1|Year)", "ProjectSubProject",
+                   "(1|gr(GenusSpecies, cov = phylo_matrix))"),
+                 collapse="+"))), family="zero_inflated_binomial")
 
   freq.par.formulas[[par]] <-
     formula(paste0("cbind(", par, ", SpScreened)~", 
@@ -51,15 +56,21 @@ sp.network.metrics$Year <- as.factor(sp.network.metrics$Year)
 sp.network.metrics$Site <- as.factor(sp.network.metrics$Site)
 sp.network.metrics$ProjectSubProject <- as.factor(sp.network.metrics$ProjectSubProject)
 
-## *******************************************************
-## Bombus
-## *******************************************************
 
+ms.sample.table <- sp.network.metrics[sp.network.metrics$Genus %in%
+                                  c("Bombus", "Apis", "Melissodes"),]
+
+table(ms.sample.table$GenusSpecies,  ms.sample.table$ProjectSubProject)
+
+## *******************************************************
+## 
 bombus <- sp.network.metrics[sp.network.metrics$Genus == "Bombus",]
+bombus.projects <- sort(unique(as.character(bombus$ProjectSubProject)))
 
 ## vancouverensis was previously known as bifarius, change to match
 ## pylogeny before name change
-bombus$GenusSpecies[bombus$GenusSpecies == "Bombus vancouverensis"] <- "Bombus bifarius"
+bombus$GenusSpecies[bombus$GenusSpecies == "Bombus vancouverensis"] <-
+  "Bombus bifarius"
 
 load("data/Bombus_phylogeny.Rdata")
 not.in.phylo <- unique(bombus$GenusSpecies[
@@ -73,14 +84,12 @@ write.csv(bombus[, c(net.cols, "Site", "Year", "ProjectSubProject",
                      par.cols)], file="data/bombus_Spnet.csv")
 
 
-## There aren't enough screenings in SI for Apicystis or Crithidia
-## model to run. 
-
+## ## There aren't enough screenings/positives in SF for the
+## ## moels to run
 sub.bombus <- list(
-  SpApicystisSpp=bombus[!bombus$ProjectSubProject %in% c("SF", "PN-CA-FIRE"),], 
-  SpCrithidiaPresence=bombus[bombus$ProjectSubProject != "SF",]
+  SpApicystisSpp=bombus[!bombus$ProjectSubProject %in% c("SF"),], 
+  SpCrithidiaPresence=bombus[!bombus$ProjectSubProject %in% c("SF"),]
 )
-
 
 ## check models
 for(i in names(freq.par.formulas)){
@@ -101,10 +110,11 @@ bombus.CrithidiaPresence <- brm(par.formulas$SpCrithidiaPresence,
                         data2=list(phylo_matrix=phylo_matrix),
                         cores=ncores,
                         iter = 10^4,
-                        chains =1,
+                        chains =3,
                         thin=1,
                         init=0,
                         open_progress = FALSE,
+                        seed = model_seed,
                         control = list(adapt_delta = 0.999,
                                        stepsize = 0.001,
                                        max_treedepth = 20))
@@ -115,39 +125,47 @@ save(bombus,bombus.CrithidiaPresence,
 
 load(file="saved/bombus_CrithidiaPresence.Rdata")
 
-## Some outliers, both otherwise looks okay
-checked.bombus.CrithidiaPresence <-
-  check_brms(bombus.CrithidiaPresence)
-
-## Not sig, but not perfect
-testDispersion(checked.bombus.CrithidiaPresence)
-
 ## Year SD skewed towards zero, otherwise okay
 plot.res(bombus.CrithidiaPresence, "bombus_CrithidiaPresence")
 
 ## All rhats and ESS good
 summary(bombus.CrithidiaPresence)
 
-## .65, good
-bayes_R2(bombus.CrithidiaPresence)
+bayes_R2_table <- record_bayes_R2(
+  bayes_R2_table,
+  bombus.CrithidiaPresence,
+  model_id = "bombus_CrithidiaPresence"
+)
 
 ## Looks good
-plot(pp_check(bombus.CrithidiaPresence,
-              resp="SpCrithidiaPresence", ndraws=10^3))
+project_inclusion_table <- record_model_projects(
+  project_inclusion_table,
+  model_id = "bombus_CrithidiaPresence",
+  data = sub.bombus$SpCrithidiaPresence,
+  response_col = "SpCrithidiaPresence",
+  trials_col = "SpScreened",
+  all_projects = bombus.projects
+)
+
+save_model_diagnostics(
+  bombus.CrithidiaPresence,
+  model_id = "bombus_CrithidiaPresence",
+  resp = "SpCrithidiaPresence",
+  ndraws = 10^3
+)
 
 ## *******************************************************
-
-## SF not converging, not very many bombus screened.
 
 bombus.ApicystisSpp <- brm(par.formulas$SpApicystisSpp,
                         sub.bombus$SpApicystisSpp,
                         cores=ncores,
                         iter = 10^4,
-                        chains =1,
+                        chains =3,
                         data2=list(phylo_matrix=phylo_matrix),
                         thin=1,
                         init=0,
                         open_progress = FALSE,
+                        seed = model_seed,
                         control = list(adapt_delta = 0.999,
                                        stepsize = 0.001,
                                        max_treedepth = 20))
@@ -158,66 +176,32 @@ save(bombus, bombus.ApicystisSpp,
 
 load(file="saved/bombus_ApicystisSpp.Rdata")
 
-## looks good!
-checked.bombus.ApicystisSpp <-
-  check_brms(bombus.ApicystisSpp)
-
-## looks good!
-testDispersion(checked.bombus.ApicystisSpp)
-
-## ProjectSubProjectSF and Year SD skewed, but otherwise okay
 plot.res(bombus.ApicystisSpp, "bombus_ApicystisSpp")
 
-## SF had issues, resolved with SF removed
 summary(bombus.ApicystisSpp)
 
-## .61, good
-bayes_R2(bombus.ApicystisSpp)
+bayes_R2_table <- record_bayes_R2(
+  bayes_R2_table,
+  bombus.ApicystisSpp,
+  model_id = "bombus_ApicystisSpp"
+)
 
 ## Looks good
-plot(pp_check(bombus.ApicystisSpp, resp="SpApicystisSpp", ndraws=10^3))
+project_inclusion_table <- record_model_projects(
+  project_inclusion_table,
+  model_id = "bombus_ApicystisSpp",
+  data = sub.bombus$SpApicystisSpp,
+  response_col = "SpApicystisSpp",
+  trials_col = "SpScreened",
+  all_projects = bombus.projects
+)
 
-## *******************************************************
-
-## ## SI not converging, very few positives
-
-## bombus.SpNosemaBombi <- brm(par.formulas$SpNosemaBombi,
-##                         bombus[bombus$ProjectSubProject != "SI",],
-##                         cores=ncores,
-##                         data2=list(phylo_matrix=phylo_matrix),
-##                         iter = 10^4,
-##                         chains =1,
-##                         thin=1,
-##                         init=0,
-##                         open_progress = FALSE,
-##                         control = list(adapt_delta = 0.999,
-##                                        stepsize = 0.001,
-##                                        max_treedepth = 20))
-                  
-## write.ms.table(bombus.SpNosemaBombi, "bombus_SpNosemaBombi")
-## save(bombus,bombus.SpNosemaBombi,
-##      file="saved/bombus_SpNosemaBombi.Rdata")
-
-## load(file="saved/bombus_SpNosemaBombi.Rdata")
-
-## ## good after dropping SI
-## checked.bombus.SpNosemaBombi <-
-##   check_brms(bombus.SpNosemaBombi)
-
-## ## good after dropping SI
-## testDispersion(checked.bombus.SpNosemaBombi)
-
-## ## Random effect SD skewed
-## plot.res(bombus.SpNosemaBombi, "bombus_SpNosemaBombi")
-
-## ## Rhat and ESS good
-## summary(bombus.SpNosemaBombi)
-
-## ## .41, good
-## bayes_R2(bombus.SpNosemaBombi)
-
-## ## Good
-## plot(pp_check(bombus.SpNosemaBombi, resp="SpSpNosemaBombi", ndraws=10^3))
+save_model_diagnostics(
+  bombus.ApicystisSpp,
+  model_id = "bombus_ApicystisSpp",
+  resp = "SpApicystisSpp",
+  ndraws = 10^3
+)
 
 ## *******************************************************
 ## Melissodes
@@ -225,6 +209,7 @@ plot(pp_check(bombus.ApicystisSpp, resp="SpApicystisSpp", ndraws=10^3))
 
 melissodes <- sp.network.metrics[sp.network.metrics$Genus ==
                                  "Melissodes",]
+melissodes.projects <- sort(unique(as.character(melissodes$ProjectSubProject)))
 load("data/Melissodes_phylogeny.Rdata")
 not.in.phylo <- unique(melissodes$GenusSpecies[
   !melissodes$GenusSpecies
@@ -232,8 +217,17 @@ not.in.phylo <- unique(melissodes$GenusSpecies[
   phylo$tip.label])
 not.in.phylo
 
-melissodes <- melissodes[melissodes$GenusSpecies != not.in.phylo,]
+melissodes <- melissodes[!melissodes$GenusSpecies %in% not.in.phylo,]
 
+
+## Only enough screened individuals in these projects
+melissodes <- melissodes[melissodes$ProjectSubProject %in% c("SF",
+                                                             "SI"),]
+melissodes$ProjectSubProject <- as.character(melissodes$ProjectSubProject)
+table(melissodes$GenusSpecies,  melissodes$ProjectSubProject)
+melissodes$Year <- as.character(melissodes$Year)
+melissodes$Site <- as.character(melissodes$Site)
+melissodes$GenusSpecies <- as.character(melissodes$GenusSpecies)
 
 write.csv(melissodes[, c(net.cols, "Site", "Year", "ProjectSubProject",
                      "GenusSpecies", "SpScreened",
@@ -248,7 +242,6 @@ for(form in freq.par.formulas[1:2]){
   print(summary(mod))
 }
 
-
 ## *******************************************************
 
 melissodes.CrithidiaPresence <- brm(par.formulas$SpCrithidiaPresence,
@@ -256,10 +249,11 @@ melissodes.CrithidiaPresence <- brm(par.formulas$SpCrithidiaPresence,
                         cores=ncores,
                         data2=list(phylo_matrix=phylo_matrix),
                         iter = 10^4,
-                        chains =1,
+                        chains =3,
                         thin=1,
                         init=0,
                         open_progress = FALSE,
+                        seed = model_seed,
                         control = list(adapt_delta = 0.999,
                                        stepsize = 0.001,
                                        max_treedepth = 20))
@@ -270,22 +264,32 @@ save(melissodes, melissodes.CrithidiaPresence,
 
 load(file="saved/melissodes_CrithidiaPresence.Rdata")
 
-## 
-checked.melissodes.CrithidiaPresence <-
-  check_brms(melissodes.CrithidiaPresence)
-
-## 
-testDispersion(melissodes.CrithidiaPresence)
-
 plot.res(melissodes.CrithidiaPresence, "melissodes_CrithidiaPresence")
 
 summary(melissodes.CrithidiaPresence)
 
-bayes_R2(melissodes.CrithidiaPresence)
+bayes_R2_table <- record_bayes_R2(
+  bayes_R2_table,
+  melissodes.CrithidiaPresence,
+  model_id = "melissodes_CrithidiaPresence"
+)
 
-plot(pp_check(melissodes.CrithidiaPresence,
-              resp="SpCrithidiaPresence", ndraws=10^3))
-x
+project_inclusion_table <- record_model_projects(
+  project_inclusion_table,
+  model_id = "melissodes_CrithidiaPresence",
+  data = melissodes,
+  response_col = "SpCrithidiaPresence",
+  trials_col = "SpScreened",
+  all_projects = melissodes.projects
+)
+
+save_model_diagnostics(
+  melissodes.CrithidiaPresence,
+  model_id = "melissodes_CrithidiaPresence",
+  resp = "SpCrithidiaPresence",
+  ndraws = 10^3
+)
+
 ## *******************************************************
 
 melissodes.ApicystisSpp <- brm(par.formulas$SpApicystisSpp,
@@ -293,10 +297,11 @@ melissodes.ApicystisSpp <- brm(par.formulas$SpApicystisSpp,
                         cores=ncores,
                         data2=list(phylo_matrix=phylo_matrix),
                         iter = 10^4,
-                        chains =1,
+                        chains =3,
                         thin=1,
                         init=0,
                         open_progress = FALSE,
+                        seed = model_seed,
                         control = list(adapt_delta = 0.999,
                                        stepsize = 0.001,
                                        max_treedepth = 20))
@@ -311,16 +316,35 @@ plot.res(melissodes.ApicystisSpp, "melissodes_ApicystisSpp")
 
 summary(melissodes.ApicystisSpp)
 
-bayes_R2(melissodes.ApicystisSpp)
+bayes_R2_table <- record_bayes_R2(
+  bayes_R2_table,
+  melissodes.ApicystisSpp,
+  model_id = "melissodes_ApicystisSpp"
+)
 
-plot(pp_check(melissodes.ApicystisSpp, resp="SpApicystisSpp", ndraws=10^3))
+project_inclusion_table <- record_model_projects(
+  project_inclusion_table,
+  model_id = "melissodes_ApicystisSpp",
+  data = melissodes,
+  response_col = "SpApicystisSpp",
+  trials_col = "SpScreened",
+  all_projects = melissodes.projects
+)
+
+save_model_diagnostics(
+  melissodes.ApicystisSpp,
+  model_id = "melissodes_ApicystisSpp",
+  resp = "SpApicystisSpp",
+  ndraws = 10^3
+)
 
 ## *******************************************************
 ## Apis
 ## *******************************************************
 
 apis <- sp.network.metrics[sp.network.metrics$Genus == "Apis",]
-apis <- apis[apis$ProjectSubProject != "PN-CA-FIRE",]
+apis.projects <- sort(unique(as.character(apis$ProjectSubProject)))
+apis <- apis[!apis$ProjectSubProject %in% c( "PN-COAST", "SF"),]
 
 ## Drop phylogeny from models
 par.formulas <- vector(mode="list", length=length(par.cols))
@@ -340,10 +364,11 @@ apis.CrithidiaPresence <- brm(par.formulas$SpCrithidiaPresence,
                         apis,
                         cores=ncores,
                         iter = 10^4,
-                        chains =1,
+                        chains =3,
                         thin=1,
                         init=0,
                         open_progress = FALSE,
+                        seed = model_seed,
                         control = list(adapt_delta = 0.999,
                                        stepsize = 0.001,
                                        max_treedepth = 20))
@@ -358,10 +383,27 @@ plot.res(apis.CrithidiaPresence, "apis_CrithidiaPresence")
 
 summary(apis.CrithidiaPresence)
 
-bayes_R2(apis.CrithidiaPresence)
+bayes_R2_table <- record_bayes_R2(
+  bayes_R2_table,
+  apis.CrithidiaPresence,
+  model_id = "apis_CrithidiaPresence"
+)
 
-plot(pp_check(apis.CrithidiaPresence,
-              resp="SpCrithidiaPresence", ndraws=10^3))
+project_inclusion_table <- record_model_projects(
+  project_inclusion_table,
+  model_id = "apis_CrithidiaPresence",
+  data = apis,
+  response_col = "SpCrithidiaPresence",
+  trials_col = "SpScreened",
+  all_projects = apis.projects
+)
+
+save_model_diagnostics(
+  apis.CrithidiaPresence,
+  model_id = "apis_CrithidiaPresence",
+  resp = "SpCrithidiaPresence",
+  ndraws = 10^3
+)
 
 ## *******************************************************
 
@@ -369,10 +411,11 @@ apis.ApicystisSpp <- brm(par.formulas$SpApicystisSpp,
                         apis,
                         cores=ncores,
                         iter = 10^4,
-                        chains =1,
+                        chains =3,
                         thin=1,
                         init=0,
                         open_progress = FALSE,
+                        seed = model_seed,
                         control = list(adapt_delta = 0.999,
                                        stepsize = 0.001,
                                        max_treedepth = 20))
@@ -387,34 +430,24 @@ plot.res(apis.ApicystisSpp, "apis_ApicystisSpp")
 
 summary(apis.ApicystisSpp)
 
-bayes_R2(apis.ApicystisSpp)
+bayes_R2_table <- record_bayes_R2(
+  bayes_R2_table,
+  apis.ApicystisSpp,
+  model_id = "apis_ApicystisSpp"
+)
 
-plot(pp_check(apis.ApicystisSpp, resp="SpApicystisSpp", ndraws=10^3))
+project_inclusion_table <- record_model_projects(
+  project_inclusion_table,
+  model_id = "apis_ApicystisSpp",
+  data = apis,
+  response_col = "SpApicystisSpp",
+  trials_col = "SpScreened",
+  all_projects = apis.projects
+)
 
-## *******************************************************
-
-apis.SpNosemaCeranae <- brm(par.formulas$SpNosemaCeranae,
-                        apis[apis$ProjectSubProject != "PN-CA-FIRE",],
-                        cores=ncores,
-                        iter = 10^4,
-                        chains =1,
-                        thin=1,
-                        init=0,
-                        open_progress = FALSE,
-                        control = list(adapt_delta = 0.999,
-                                       stepsize = 0.001,
-                                       max_treedepth = 20))
-                  
-write.ms.table(apis.SpNosemaCeranae, "apis_SpNosemaCeranae")
-save(apis,apis.SpNosemaCeranae,
-     file="saved/apis_SpNosemaCeranae.Rdata")
-
-load(file="saved/apis_SpNosemaCeranae.Rdata")
-
-plot.res(apis.SpNosemaCeranae, "apis_SpNosemaCeranae")
-
-summary(apis.SpNosemaCeranae)
-
-bayes_R2(apis.SpNosemaCeranae)
-
-plot(pp_check(apis.SpNosemaCeranae, resp="SpSpNosemaCeranae", ndraws=10^3))
+save_model_diagnostics(
+  apis.ApicystisSpp,
+  model_id = "apis_ApicystisSpp",
+  resp = "SpApicystisSpp",
+  ndraws = 10^3
+)
