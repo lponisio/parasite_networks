@@ -1,5 +1,6 @@
 rm(list=ls())
-setwd("~/University of Oregon Dropbox/Lauren Ponisio/")
+source("lab_paths.R")
+setwd(local.path)
 setwd("parasite_networks")
 
 library(corrr)

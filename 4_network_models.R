@@ -1,488 +1,291 @@
-
-rm(list=ls())
-setwd("~/University of Oregon Dropbox/Lauren Ponisio/")
+source("lab_paths.R")
+setwd(local.path)
 setwd("parasite_networks")
-source('src/writeResultsTable.R')
+
+rm(list = ls())
+
+source("src/writeResultsTable.R")
 source("src/init.R")
 source("src/makeBayesR2Table.R")
 source("src/makeModelOutputTables.R")
+source("src/runHostParasiteModels.R")
 
-bayes_R2_table <- init_bayes_R2_table()
-project_inclusion_table <- init_model_project_table()
 library(brms)
-library(lme4)
 library(glmmTMB)
 library(performance)
-library(DHARMa)
+library(posterior)
+library(bayesplot)
 
-load(file="data/network_mets.RData")
+load(file = "data/network_mets.RData")
+
+## Toggle these if you want to rerun only one part of the workflow.
+run_models <- TRUE
+run_post_checks <- TRUE
+reset_output_tables <- TRUE
+
 ncores <- 3
 model_seed <- 123
+pp_ndraws <- 10^3
 set.seed(model_seed)
 
-
-network.metrics <- network.metrics[
-  !is.na(network.metrics$ProjectSubProject),]
+network.metrics <- network.metrics[!is.na(network.metrics$ProjectSubProject), ]
 network.metrics$Year <- as.factor(network.metrics$Year)
 network.metrics$Site <- as.factor(network.metrics$Site)
-network.metrics$ProjectSubProject <- as.factor(
-  network.metrics$ProjectSubProject)
+network.metrics$ProjectSubProject <- as.factor(network.metrics$ProjectSubProject)
 
-net.cols <- c("zweighted.NODF",
-              "zH2",
-              "zweighted.cluster.coefficient.HL",
-              "number.of.species.HL",
-              "number.of.species.LL")
+network.metrics$UniNetwork <- paste(
+  network.metrics$Site,
+  network.metrics$Year,
+  network.metrics$SampleRound
+)
+
+net.cols <- c(
+  "zweighted.NODF",
+  "zH2",
+  "zweighted.cluster.coefficient.HL",
+  "number.of.species.HL",
+  "number.of.species.LL"
+)
 
 net.cols.scale <- paste0("scale(", net.cols, ")")
 
 par.cols <- c("GenusApicystisSpp", "GenusCrithidiaPresence")
 
+network_terms <- c(
+  net.cols.scale,
+  "ProjectSubProject",
+  "(1|Site)",
+  "(1|Year)"
+)
 
-par.formulas <- vector(mode="list", length=length(par.cols))
-freq.par.formulas <- vector(mode="list", length=length(par.cols))
-names(freq.par.formulas) <- par.cols
-names(par.formulas) <- par.cols
-
-## *******************************************************
-## Genus Specific models
-## *******************************************************
-
-par.formulas <- vector(mode="list", length=length(par.cols))
-freq.par.formulas <- vector(mode="list", length=length(par.cols))
-names(freq.par.formulas) <- par.cols
-names(par.formulas) <- par.cols
-
-for(par in par.cols){
-  par.formulas[[par]] <- bf(
-    formula(paste0(par, "| trials(GenusScreened)~", 
-                   paste(c(net.cols.scale, "ProjectSubProject",
-                           "(1|Site)",
-                           "(1|Year)"
-                           ),
-                         collapse="+"))),
-    family="zero_inflated_binomial")
-
-  freq.par.formulas[[par]] <-
-    formula(paste0("cbind(", par, ", GenusScreened)~", 
-                   paste(c(net.cols.scale,
-                           "(1|Site)", 
-                           "(1|Year)",
-                           "ProjectSubProject"),
-                         collapse="+")))
+make_genus_brms_formula <- function(response_col){
+  bf(
+    formula(
+      paste0(
+        response_col,
+        " | trials(GenusScreened) ~ ",
+        paste(network_terms, collapse = " + ")
+      )
+    ),
+    family = "zero_inflated_binomial"
+  )
 }
 
-network.metrics$UniNetwork <- paste(network.metrics$Site,
-                                    network.metrics$Year,
-                                    network.metrics$SampleRound)
+make_genus_freq_formula <- function(response_col){
+  make_binomial_check_formula(
+    response_col = response_col,
+    trials_col = "GenusScreened",
+    terms = network_terms
+  )
+}
 
-ms.sample.table <- network.metrics[network.metrics$Genus %in%
-                                  c("Bombus", "Apis", "Melissodes"),]
+par.formulas <- setNames(
+  lapply(par.cols, make_genus_brms_formula),
+  par.cols
+)
 
-table(ms.sample.table$Genus,
-      ms.sample.table$ProjectSubProject)
+freq.par.formulas <- setNames(
+  lapply(par.cols, make_genus_freq_formula),
+  par.cols
+)
 
-tapply(ms.sample.table$UniNetwork,
-       ms.sample.table$ProjectSubProject,
-       function(x) length(unique(x)))
+## Basic sample summaries.
+ms.sample.table <- network.metrics[
+  network.metrics$Genus %in% c("Bombus", "Apis", "Melissodes"),
+]
+
+table(ms.sample.table$Genus, ms.sample.table$ProjectSubProject)
+
+tapply(
+  ms.sample.table$UniNetwork,
+  ms.sample.table$ProjectSubProject,
+  function(x) length(unique(x))
+)
 
 ## *******************************************************
 ## Bombus
 ## *******************************************************
-bombus <- network.metrics[network.metrics$Genus == "Bombus",]
+
+bombus <- network.metrics[network.metrics$Genus == "Bombus", ]
 bombus.projects <- sort(unique(as.character(bombus$ProjectSubProject)))
 
-## reasonable sample sized
 tapply(bombus$GenusScreened, bombus$ProjectSubProject, sum)
 tapply(bombus$GenusCrithidiaPresence, bombus$ProjectSubProject, sum)
 tapply(bombus$GenusApicystisSpp, bombus$ProjectSubProject, sum)
 
-## Not enough positives to do anything with
+## Not enough positives to model these parasites.
 tapply(bombus$GenusNosemaBombi, bombus$ProjectSubProject, sum)
 tapply(bombus$GenusNosemaCeranae, bombus$ProjectSubProject, sum)
 
 sub.bombus <- list(
-  GenusApicystisSpp=bombus[!bombus$ProjectSubProject %in%
-                           c("SF"),], 
-  GenusCrithidiaPresence=bombus[!bombus$ProjectSubProject %in%
-                                c("SF"),]
-)
-
-bombus.model.data <- do.call(
-  rbind,
-  lapply(names(sub.bombus), function(parasite_model){
-    out <- sub.bombus[[parasite_model]]
-    out$ParasiteModel <- parasite_model
-    out
-  })
-)
-
-write.csv(bombus.model.data[, c("ParasiteModel", net.cols, "Site", "Year",
-                                "ProjectSubProject",
-                                "GenusScreened",
-                                par.cols)],
-          file="data/bombus_network_model_data.csv",
-          row.names = FALSE)
-
-
-## check models
-for(i in names(freq.par.formulas)){
-  print(i)
-  mod <- glmmTMB(freq.par.formulas[[i]],
-                 data=sub.bombus[[i]],
-                 family="binomial",
-                 ziformula=~1)
-  print(summary(mod))
-  print(check_collinearity(mod))
-}
-
-## *******************************************************
-
-print("Bombus Crithidia model")
-bombus.CrithidiaPresence <- brm(par.formulas$GenusCrithidiaPresence,
-                        sub.bombus$GenusCrithidiaPresence,
-                        cores=ncores,
-                        iter = 10^4,
-                        chains =3,
-                        thin=1,
-                        init=0,
-                        open_progress = FALSE,
-                        seed = model_seed,
-                        control = list(adapt_delta = 0.999,
-                                       stepsize = 0.001,
-                                       max_treedepth = 20))
-                  
-write.ms.table(bombus.CrithidiaPresence,
-               "network_bombus_CrithidiaPresence")
-save(bombus,bombus.CrithidiaPresence,
-     file="saved/network_bombus_CrithidiaPresence.Rdata")
-
-load(file="saved/network_bombus_CrithidiaPresence.Rdata")
-
-## Some outliers, both otherwise looks okay
-
-plot.res(bombus.CrithidiaPresence, "network_bombus_CrithidiaPresence")
-
-summary(bombus.CrithidiaPresence)
-
-bayes_R2_table <- record_bayes_R2(
-  bayes_R2_table,
-  bombus.CrithidiaPresence,
-  model_id = "network_bombus_CrithidiaPresence"
-)
-
-project_inclusion_table <- record_model_projects(
-  project_inclusion_table,
-  model_id = "network_bombus_CrithidiaPresence",
-  data = sub.bombus$GenusCrithidiaPresence,
-  response_col = "GenusCrithidiaPresence",
-  trials_col = "GenusScreened",
-  all_projects = bombus.projects
-)
-
-save_model_diagnostics(
-  bombus.CrithidiaPresence,
-  model_id = "network_bombus_CrithidiaPresence",
-  resp = "GenusCrithidiaPresence",
-  ndraws = 10^3
-)
-
-## *******************************************************
-
-print("Bombus ApicystisSpp model")
-bombus.ApicystisSpp <- brm(par.formulas$GenusApicystisSpp,
-                        sub.bombus$GenusApicystisSpp,
-                        cores=ncores,
-                        iter = 10^4,
-                        chains =3,
-                        thin=1,
-                        init=0,
-                        open_progress = FALSE,
-                        seed = model_seed,
-                        control = list(adapt_delta = 0.999,
-                                       stepsize = 0.001,
-                                       max_treedepth = 20))
-                  
-write.ms.table(bombus.ApicystisSpp, "network_bombus_ApicystisSpp")
-save(bombus, bombus.ApicystisSpp,
-     file="saved/network_bombus_ApicystisSpp.Rdata")
-
-load(file="saved/network_bombus_ApicystisSpp.Rdata")
-
-plot.res(bombus.ApicystisSpp, "network_bombus_ApicystisSpp")
-
-summary(bombus.ApicystisSpp)
-
-bayes_R2_table <- record_bayes_R2(
-  bayes_R2_table,
-  bombus.ApicystisSpp,
-  model_id = "network_bombus_ApicystisSpp"
-)
-
-project_inclusion_table <- record_model_projects(
-  project_inclusion_table,
-  model_id = "network_bombus_ApicystisSpp",
-  data = sub.bombus$GenusApicystisSpp,
-  response_col = "GenusApicystisSpp",
-  trials_col = "GenusScreened",
-  all_projects = bombus.projects
-)
-
-save_model_diagnostics(
-  bombus.ApicystisSpp,
-  model_id = "network_bombus_ApicystisSpp",
-  resp = "GenusApicystisSpp",
-  ndraws = 10^3
+  GenusApicystisSpp = bombus[!bombus$ProjectSubProject %in% c("SF"), ],
+  GenusCrithidiaPresence = bombus[!bombus$ProjectSubProject %in% c("SF"), ]
 )
 
 ## *******************************************************
 ## Melissodes
 ## *******************************************************
 
-melissodes <- network.metrics[network.metrics$Genus ==
-                                 "Melissodes",]
-melissodes.projects <- sort(unique(as.character(melissodes$ProjectSubProject)))
+melissodes.all <- network.metrics[network.metrics$Genus == "Melissodes", ]
+melissodes.projects <- sort(unique(as.character(melissodes.all$ProjectSubProject)))
 
-
-write.csv(melissodes[, c(net.cols, "Site", "Year", "ProjectSubProject",
-                     "Genus", "GenusScreened",
-                     par.cols)], file="data/melissodes_net.csv")
-
-tapply(melissodes$GenusScreened, melissodes$ProjectSubProject, sum)
-tapply(melissodes$GenusCrithidiaPresence,
-       melissodes$ProjectSubProject, sum)
-tapply(melissodes$GenusApicystisSpp, melissodes$ProjectSubProject,
-       sum)
-
-## Only enough screened individuals in these projects
-melissodes <- melissodes[melissodes$ProjectSubProject %in%
-                         c("SF", "SI"),]
-
-## check models
-for(i in names(freq.par.formulas)[1:2]){
-  print(i)
-  mod <- glmmTMB(freq.par.formulas[[i]],
-                 data=melissodes,
-                 family="binomial",
-                 ziformula=~1)
-  print(summary(mod))
-  print(check_collinearity(mod))
-}
-
-## *******************************************************
-print("Melissodes Crithidia model")
-
-melissodes.CrithidiaPresence <- brm(par.formulas$GenusCrithidiaPresence,
-                        melissodes,
-                        cores=ncores,
-                        iter = 10^4,
-                        chains =3,
-                        thin=1,
-                        init=0,
-                        open_progress = FALSE,
-                        seed = model_seed,
-                        control = list(adapt_delta = 0.9999,
-                                       stepsize = 0.0001,
-                                       max_treedepth = 25))
-                  
-write.ms.table(melissodes.CrithidiaPresence,
-               "network_melissodes_CrithidiaPresence")
-save(melissodes, melissodes.CrithidiaPresence,
-     file="saved/network_melissodes_CrithidiaPresence.Rdata")
-
-load(file="saved/network_melissodes_CrithidiaPresence.Rdata")
-
-plot.res(melissodes.CrithidiaPresence,
-         "network_melissodes_CrithidiaPresence")
-
-summary(melissodes.CrithidiaPresence)
-
-bayes_R2_table <- record_bayes_R2(
-  bayes_R2_table,
-  melissodes.CrithidiaPresence,
-  model_id = "network_melissodes_CrithidiaPresence"
+write.csv(
+  melissodes.all[, c(net.cols, "Site", "Year", "ProjectSubProject",
+                     "Genus", "GenusScreened", par.cols)],
+  file = "data/melissodes_net.csv",
+  row.names = FALSE
 )
 
-project_inclusion_table <- record_model_projects(
-  project_inclusion_table,
-  model_id = "network_melissodes_CrithidiaPresence",
-  data = melissodes,
-  response_col = "GenusCrithidiaPresence",
-  trials_col = "GenusScreened",
-  all_projects = melissodes.projects
-)
+tapply(melissodes.all$GenusScreened, melissodes.all$ProjectSubProject, sum)
+tapply(melissodes.all$GenusCrithidiaPresence, melissodes.all$ProjectSubProject, sum)
+tapply(melissodes.all$GenusApicystisSpp, melissodes.all$ProjectSubProject, sum)
 
-save_model_diagnostics(
-  melissodes.CrithidiaPresence,
-  model_id = "network_melissodes_CrithidiaPresence",
-  resp = "GenusCrithidiaPresence",
-  ndraws = 10^3
-)
-
-## *******************************************************
-
-print("Melissodes ApicystisSpp model")
-melissodes.ApicystisSpp <- brm(par.formulas$GenusApicystisSpp,
-                        melissodes,
-                        cores=ncores,
-                        iter = 10^4,
-                        chains =3,
-                        thin=1,
-                        init=0,
-                        open_progress = FALSE,
-                        seed = model_seed,
-                        control = list(adapt_delta = 0.999,
-                                       stepsize = 0.001,
-                                       max_treedepth = 20))
-                  
-write.ms.table(melissodes.ApicystisSpp, "network_melissodes_ApicystisSpp")
-save(melissodes, melissodes.ApicystisSpp,
-     file="saved/network_melissodes_ApicystisSpp.Rdata")
-
-load(file="saved/network_melissodes_ApicystisSpp.Rdata")
-
-plot.res(melissodes.ApicystisSpp, "network_melissodes_ApicystisSpp")
-
-summary(melissodes.ApicystisSpp)
-
-bayes_R2_table <- record_bayes_R2(
-  bayes_R2_table,
-  melissodes.ApicystisSpp,
-  model_id = "network_melissodes_ApicystisSpp"
-)
-
-project_inclusion_table <- record_model_projects(
-  project_inclusion_table,
-  model_id = "network_melissodes_ApicystisSpp",
-  data = melissodes,
-  response_col = "GenusApicystisSpp",
-  trials_col = "GenusScreened",
-  all_projects = melissodes.projects
-)
-
-save_model_diagnostics(
-  melissodes.ApicystisSpp,
-  model_id = "network_melissodes_ApicystisSpp",
-  resp = "GenusApicystisSpp",
-  ndraws = 10^3
-)
+## Only enough screened individuals in these projects.
+melissodes <- melissodes.all[
+  melissodes.all$ProjectSubProject %in% c("SF", "SI"),
+]
 
 ## *******************************************************
 ## Apis
 ## *******************************************************
 
-apis <- network.metrics[network.metrics$Genus == "Apis",]
-apis.projects <- sort(unique(as.character(apis$ProjectSubProject)))
+apis.all <- network.metrics[network.metrics$Genus == "Apis", ]
+apis.projects <- sort(unique(as.character(apis.all$ProjectSubProject)))
 
-tapply(apis$GenusScreened, apis$ProjectSubProject, sum)
-tapply(apis$GenusCrithidiaPresence, apis$ProjectSubProject, sum)
-tapply(apis$GenusApicystisSpp, apis$ProjectSubProject, sum)
+tapply(apis.all$GenusScreened, apis.all$ProjectSubProject, sum)
+tapply(apis.all$GenusCrithidiaPresence, apis.all$ProjectSubProject, sum)
+tapply(apis.all$GenusApicystisSpp, apis.all$ProjectSubProject, sum)
 
-apis.sub <- apis[!apis$ProjectSubProject %in% c( "PN-COAST", "SF"),]
-                 
-## check models
-for(i in names(freq.par.formulas)){
-  print(i)
-  mod <- glmmTMB(freq.par.formulas[[i]],
-                 data=apis.sub,
-                 family="binomial",
-                 ziformula=~1)
-  print(summary(mod))
-  print(check_collinearity(mod))
+apis.sub <- apis.all[
+  !apis.all$ProjectSubProject %in% c("PN-COAST", "SF"),
+]
+
+## *******************************************************
+## Model specifications
+## *******************************************************
+
+model_specs <- list(
+  list(
+    model_id = "network_bombus_CrithidiaPresence",
+    model_object_name = "bombus.CrithidiaPresence",
+    data = sub.bombus$GenusCrithidiaPresence,
+    brms_formula = par.formulas$GenusCrithidiaPresence,
+    frequentist_formula = freq.par.formulas$GenusCrithidiaPresence,
+    response_col = "GenusCrithidiaPresence",
+    trials_col = "GenusScreened",
+    all_projects = bombus.projects,
+    control = list(adapt_delta = 0.999, stepsize = 0.001,
+                   max_treedepth = 20)
+  ),
+  list(
+    model_id = "network_bombus_ApicystisSpp",
+    model_object_name = "bombus.ApicystisSpp",
+    data = sub.bombus$GenusApicystisSpp,
+    brms_formula = par.formulas$GenusApicystisSpp,
+    frequentist_formula = freq.par.formulas$GenusApicystisSpp,
+    response_col = "GenusApicystisSpp",
+    trials_col = "GenusScreened",
+    all_projects = bombus.projects,
+    control = list(adapt_delta = 0.999, stepsize = 0.001,
+                   max_treedepth = 20)
+  ),
+  list(
+    model_id = "network_melissodes_CrithidiaPresence",
+    model_object_name = "melissodes.CrithidiaPresence",
+    data = melissodes,
+    brms_formula = par.formulas$GenusCrithidiaPresence,
+    frequentist_formula = freq.par.formulas$GenusCrithidiaPresence,
+    response_col = "GenusCrithidiaPresence",
+    trials_col = "GenusScreened",
+    all_projects = melissodes.projects,
+    control = list(adapt_delta = 0.9999, stepsize = 0.0001,
+                   max_treedepth = 25)
+  ),
+  list(
+    model_id = "network_melissodes_ApicystisSpp",
+    model_object_name = "melissodes.ApicystisSpp",
+    data = melissodes,
+    brms_formula = par.formulas$GenusApicystisSpp,
+    frequentist_formula = freq.par.formulas$GenusApicystisSpp,
+    response_col = "GenusApicystisSpp",
+    trials_col = "GenusScreened",
+    all_projects = melissodes.projects,
+    control = list(adapt_delta = 0.999, stepsize = 0.001,
+                   max_treedepth = 20)
+  ),
+  list(
+    model_id = "network_apis_CrithidiaPresence",
+    model_object_name = "apis.CrithidiaPresence",
+    data = apis.sub,
+    brms_formula = par.formulas$GenusCrithidiaPresence,
+    frequentist_formula = freq.par.formulas$GenusCrithidiaPresence,
+    response_col = "GenusCrithidiaPresence",
+    trials_col = "GenusScreened",
+    all_projects = apis.projects,
+    control = list(adapt_delta = 0.999, stepsize = 0.001,
+                   max_treedepth = 20)
+  ),
+  list(
+    model_id = "network_apis_ApicystisSpp",
+    model_object_name = "apis.ApicystisSpp",
+    data = apis.sub,
+    brms_formula = par.formulas$GenusApicystisSpp,
+    frequentist_formula = freq.par.formulas$GenusApicystisSpp,
+    response_col = "GenusApicystisSpp",
+    trials_col = "GenusScreened",
+    all_projects = apis.projects,
+    control = list(adapt_delta = 0.999, stepsize = 0.001,
+                   max_treedepth = 20)
+  )
+)
+
+## *******************************************************
+## Fit models
+## *******************************************************
+
+if (isTRUE(run_models)) {
+  for (spec in model_specs) {
+    run_host_parasite_model(
+      model_id = spec$model_id,
+      model_object_name = spec$model_object_name,
+      data = spec$data,
+      brms_formula = spec$brms_formula,
+      frequentist_formula = spec$frequentist_formula,
+      response_col = spec$response_col,
+      trials_col = spec$trials_col,
+      all_projects = spec$all_projects,
+      ncores = ncores,
+      iter = 10^4,
+      chains = 3,
+      thin = 1,
+      init = 0,
+      seed = model_seed,
+      control = spec$control,
+      open_progress = FALSE
+    )
+  }
 }
 
 ## *******************************************************
-print("Apis Crithidia model")
-apis.CrithidiaPresence <- brm(par.formulas$GenusCrithidiaPresence,
-                        apis.sub,
-                        cores=ncores,
-                        iter = 10^4,
-                        chains =3,
-                        thin=1,
-                        init=0,
-                        open_progress = FALSE,
-                        seed = model_seed,
-                        control = list(adapt_delta = 0.999,
-                                       stepsize = 0.001,
-                                       max_treedepth = 20))
-                  
-write.ms.table(apis.CrithidiaPresence, "network_apis_CrithidiaPresence")
-save(apis, apis.CrithidiaPresence,
-     file="saved/network_apis_CrithidiaPresence.Rdata")
-
-load(file="saved/network_apis_CrithidiaPresence.Rdata")
-
-plot.res(apis.CrithidiaPresence, "network_apis_CrithidiaPresence")
-
-summary(apis.CrithidiaPresence)
-
-bayes_R2_table <- record_bayes_R2(
-  bayes_R2_table,
-  apis.CrithidiaPresence,
-  model_id = "network_apis_CrithidiaPresence"
-)
-
-project_inclusion_table <- record_model_projects(
-  project_inclusion_table,
-  model_id = "network_apis_CrithidiaPresence",
-  data = apis.sub,
-  response_col = "GenusCrithidiaPresence",
-  trials_col = "GenusScreened",
-  all_projects = apis.projects
-)
-
-save_model_diagnostics(
-  apis.CrithidiaPresence,
-  model_id = "network_apis_CrithidiaPresence",
-  resp = "GenusCrithidiaPresence",
-  ndraws = 10^3
-)
-
+## Post-model checks and summary tables
 ## *******************************************************
-print("Apis ApicystisSpp model")
-apis.ApicystisSpp <- brm(par.formulas$GenusApicystisSpp,
-                        apis.sub,
-                        cores=ncores,
-                        iter = 10^4,
-                        chains =3,
-                        thin=1,
-                        init=0,
-                        open_progress = FALSE,
-                        seed = model_seed,
-                        control = list(adapt_delta = 0.999,
-                                       stepsize = 0.001,
-                                       max_treedepth = 20))
-                  
-write.ms.table(apis.ApicystisSpp, "network_apis_ApicystisSpp")
-save(apis,apis.ApicystisSpp, 
-     file="saved/network_apis_ApicystisSpp.Rdata")
 
-load(file="saved/network_apis_ApicystisSpp.Rdata")
+if (isTRUE(run_post_checks)) {
+  bayes_R2_table <- init_bayes_R2_table(reset = reset_output_tables)
+  project_inclusion_table <- init_model_project_table(reset = reset_output_tables)
 
-plot.res(apis.ApicystisSpp, "network_apis_ApicystisSpp")
+  for (spec in model_specs) {
+    post <- check_saved_host_parasite_model(
+      model_id = spec$model_id,
+      model_file = file.path("saved", paste0(spec$model_id, ".Rdata")),
+      resp = spec$response_col,
+      ndraws = pp_ndraws,
+      bayes_R2_table = bayes_R2_table,
+      project_inclusion_table = project_inclusion_table,
+      run_check_model = FALSE
+    )
 
-summary(apis.ApicystisSpp)
-
-bayes_R2_table <- record_bayes_R2(
-  bayes_R2_table,
-  apis.ApicystisSpp,
-  model_id = "network_apis_ApicystisSpp"
-)
-
-project_inclusion_table <- record_model_projects(
-  project_inclusion_table,
-  model_id = "network_apis_ApicystisSpp",
-  data = apis.sub,
-  response_col = "GenusApicystisSpp",
-  trials_col = "GenusScreened",
-  all_projects = apis.projects
-)
-
-save_model_diagnostics(
-  apis.ApicystisSpp,
-  model_id = "network_apis_ApicystisSpp",
-  resp = "GenusApicystisSpp",
-  ndraws = 10^3
-)
-
-## *******************************************************
+    bayes_R2_table <- post$bayes_R2_table
+    project_inclusion_table <- post$project_inclusion_table
+  }
+}

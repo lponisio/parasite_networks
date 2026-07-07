@@ -1,8 +1,10 @@
+rm(list=ls())
+source("lab_paths.R")
+setwd(local.path)
+setwd("parasite_networks_saved")
+
 library(stringr)
 library(tidyverse)
-rm(list=ls())
-setwd("~/University of Oregon Dropbox/Lauren Ponisio/")
-setwd("parasite_networks_saved")
 source("../parasite_networks/src/CalcMetrics.R")
 source("../parasite_networks/src/SpCalcMetrics.R")
 source("../parasite_networks/src/vaznull2.R")

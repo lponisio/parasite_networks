@@ -1,8 +1,10 @@
-## Helper functions for model diagnostics, posterior predictive checks,
-## and supplement-ready project-inclusion tables.
+## Helper functions for posterior predictive checks and supplement-ready
+## project-inclusion tables.
 ##
-## Source after src/makeBayesR2Table.R because this file reuses
-## parse_bayes_R2_model_id() and latex_escape().
+## This file intentionally does not call performance::check_model() by default.
+## For these brms zero-inflated/binomial models, performance::check_model()
+## has been failing with "invalid 'x' type in 'x && y'". Use the brms-native
+## diagnostics in src/runHostParasiteModels.R instead.
 
 pp_check_dir <- file.path("figures", "pp_checks")
 check_model_dir <- file.path("figures", "model_checks")
@@ -187,7 +189,6 @@ record_model_projects <- function(project_table,
     check.names = FALSE
   )
 
-  ## Replace any previous row for this model so reruns do not duplicate rows.
   project_table <- project_table[project_table$ModelID != model_id, , drop = FALSE]
   project_table <- rbind(project_table, new_row)
 
@@ -226,40 +227,11 @@ save_pp_check_pdf <- function(model,
   invisible(out_file)
 }
 
-save_check_model_pdf <- function(model,
-                                 model_id,
-                                 width = 11,
-                                 height = 8.5,
-                                 out_dir = check_model_dir){
-  make_dir(out_dir)
-  out_file <- file.path(out_dir, paste0(model_id, ".pdf"))
-  log_file <- file.path(out_dir, paste0(model_id, "_check_model_log.txt"))
-
-  tryCatch({
-    chk <- performance::check_model(model)
-
-    grDevices::pdf(out_file, width = width, height = height)
-    print(chk)
-    grDevices::dev.off()
-
-    writeLines(c("check_model completed successfully.",
-                 paste("Output:", out_file)), log_file)
-  }, error = function(e){
-    if (grDevices::dev.cur() > 1) grDevices::dev.off()
-    msg <- sprintf("check_model failed for %s: %s", model_id, conditionMessage(e))
-    warning(msg)
-    writeLines(msg, log_file)
-  })
-
-  invisible(out_file)
-}
-
 save_model_summary_txt <- function(model,
                                    model_id,
                                    out_dir = file.path("tables", "model_summaries")){
   make_dir(out_dir)
   out_file <- file.path(out_dir, paste0(model_id, "_summary.txt"))
-
   capture.output(summary(model), file = out_file)
   invisible(out_file)
 }
@@ -267,9 +239,19 @@ save_model_summary_txt <- function(model,
 save_model_diagnostics <- function(model,
                                    model_id,
                                    resp = NULL,
-                                   ndraws = 1000){
+                                   ndraws = 1000,
+                                   run_check_model = FALSE){
   save_model_summary_txt(model, model_id)
-  save_check_model_pdf(model, model_id)
+
+  if (exists("save_brms_native_diagnostics", mode = "function")) {
+    save_brms_native_diagnostics(model, model_id)
+  }
+
+  if (isTRUE(run_check_model) &&
+      exists("save_optional_check_model_pdf", mode = "function")) {
+    save_optional_check_model_pdf(model, model_id)
+  }
+
   save_pp_check_pdf(model, model_id, resp = resp, ndraws = ndraws)
   invisible(model_id)
 }
