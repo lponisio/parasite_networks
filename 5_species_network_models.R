@@ -1,14 +1,16 @@
+rm(list = ls())
+
 source("lab_paths.R")
 setwd(local.path)
 setwd("parasite_networks")
-
-rm(list = ls())
 
 source("src/writeResultsTable.R")
 source("src/init.R")
 source("src/makeBayesR2Table.R")
 source("src/makeModelOutputTables.R")
+source("src/makeModelResultsTable.R")
 source("src/runHostParasiteModels.R")
+source("src/modelWorkflowHelpers.R")
 
 library(brms)
 library(glmmTMB)
@@ -19,9 +21,9 @@ library(bayesplot)
 load(file = "data/sp_mets.RData")
 
 ## Toggle these if you want to rerun only one part of the workflow.
-run_models <- TRUE
+run_models <- FALSE
 run_post_checks <- TRUE
-reset_output_tables <- FALSE
+reset_output_tables <- TRUE
 
 ncores <- 3
 model_seed <- 123
@@ -72,26 +74,7 @@ freq_terms <- c(
   "ProjectSubProject"
 )
 
-make_species_phylo_brms_formula <- function(response_col){
-  bf(
-    formula(
-      paste0(
-        response_col,
-        " | trials(SpScreened) ~ ",
-        paste(phylo_terms, collapse = " + ")
-      )
-    ),
-    family = "zero_inflated_binomial"
-  )
-}
 
-make_species_freq_formula <- function(response_col, terms = freq_terms){
-  make_binomial_check_formula(
-    response_col = response_col,
-    trials_col = "SpScreened",
-    terms = terms
-  )
-}
 
 phylo.par.formulas <- setNames(
   lapply(par.cols, make_species_phylo_brms_formula),
@@ -197,18 +180,6 @@ apis_terms <- c(
   "ProjectSubProject"
 )
 
-make_apis_brms_formula <- function(response_col){
-  bf(
-    formula(
-      paste0(
-        response_col,
-        " | trials(SpScreened) ~ ",
-        paste(apis_terms, collapse = " + ")
-      )
-    ),
-    family = "binomial"
-  )
-}
 
 apis.par.formulas <- setNames(
   lapply(par.cols, make_apis_brms_formula),
@@ -237,8 +208,8 @@ model_specs <- list(
     response_col = "SpCrithidiaPresence",
     trials_col = "SpScreened",
     all_projects = bombus.projects,
-    control = list(adapt_delta = 0.999, stepsize = 0.001,
-                   max_treedepth = 20)
+    prior = priors_standard,
+    control = control_standard
   ),
   list(
     model_id = "bombus_ApicystisSpp",
@@ -250,8 +221,8 @@ model_specs <- list(
     response_col = "SpApicystisSpp",
     trials_col = "SpScreened",
     all_projects = bombus.projects,
-    control = list(adapt_delta = 0.999, stepsize = 0.001,
-                   max_treedepth = 20)
+    prior = priors_standard,
+    control = control_standard
   ),
   list(
     model_id = "melissodes_CrithidiaPresence",
@@ -263,8 +234,8 @@ model_specs <- list(
     response_col = "SpCrithidiaPresence",
     trials_col = "SpScreened",
     all_projects = melissodes.projects,
-    control = list(adapt_delta = 0.999, stepsize = 0.001,
-                   max_treedepth = 20)
+    prior = priors_sparse,
+    control = control_sparse
   ),
   list(
     model_id = "melissodes_ApicystisSpp",
@@ -276,8 +247,8 @@ model_specs <- list(
     response_col = "SpApicystisSpp",
     trials_col = "SpScreened",
     all_projects = melissodes.projects,
-    control = list(adapt_delta = 0.999, stepsize = 0.001,
-                   max_treedepth = 20)
+    prior = priors_sparse,
+    control = control_sparse
   ),
   list(
     model_id = "apis_CrithidiaPresence",
@@ -288,8 +259,8 @@ model_specs <- list(
     response_col = "SpCrithidiaPresence",
     trials_col = "SpScreened",
     all_projects = apis.projects,
-    control = list(adapt_delta = 0.999, stepsize = 0.001,
-                   max_treedepth = 20)
+    prior = priors_standard,
+    control = control_minor_issue
   ),
   list(
     model_id = "apis_ApicystisSpp",
@@ -300,8 +271,8 @@ model_specs <- list(
     response_col = "SpApicystisSpp",
     trials_col = "SpScreened",
     all_projects = apis.projects,
-    control = list(adapt_delta = 0.999, stepsize = 0.001,
-                   max_treedepth = 20)
+    prior = priors_standard,
+    control = control_minor_issue
   )
 )
 
@@ -311,48 +282,45 @@ model_specs <- list(
 
 if (isTRUE(run_models)) {
   for (spec in model_specs) {
-    run_host_parasite_model(
-      model_id = spec$model_id,
-      model_object_name = spec$model_object_name,
-      data = spec$data,
-      brms_formula = spec$brms_formula,
-      frequentist_formula = spec$frequentist_formula,
-      data2 = spec$data2,
-      response_col = spec$response_col,
-      trials_col = spec$trials_col,
-      all_projects = spec$all_projects,
-      ncores = ncores,
-      iter = 10^4,
-      chains = 3,
-      thin = 1,
-      init = 0,
-      seed = model_seed,
-      control = spec$control,
-      open_progress = FALSE
-    )
+    run_model_from_spec(spec, ncores = ncores, model_seed = model_seed)
   }
 }
 
 ## *******************************************************
-## Post-model checks and summary tables
+## Load saved models, then run post-model checks and summary tables
 ## *******************************************************
 
 if (isTRUE(run_post_checks)) {
-  bayes_R2_table <- init_bayes_R2_table(reset = reset_output_tables)
-  project_inclusion_table <- init_model_project_table(reset = reset_output_tables)
 
-  for (spec in model_specs) {
-    post <- check_saved_host_parasite_model(
-      model_id = spec$model_id,
-      model_file = file.path("saved", paste0(spec$model_id, ".Rdata")),
-      resp = spec$response_col,
-      ndraws = pp_ndraws,
-      bayes_R2_table = bayes_R2_table,
-      project_inclusion_table = project_inclusion_table,
-      run_check_model = FALSE
-    )
+  ## When run_models = FALSE, this loads all saved brmsfit objects into the
+  ## workspace without refitting. This is optional for the automated post-check
+  ## loop below, but useful if you want to run make.ms.table() manually or
+  ## inspect fitted models interactively.
+  saved_model_objects <- load_saved_host_parasite_models(
+    model_specs = model_specs,
+    saved_dir = "saved",
+    assign_to_environment = TRUE,
+    envir = .GlobalEnv,
+    stop_if_missing = TRUE
+  )
 
-    bayes_R2_table <- post$bayes_R2_table
-    project_inclusion_table <- post$project_inclusion_table
-  }
+  post_tables <- post_check_saved_host_parasite_models(
+    model_specs = model_specs,
+    ndraws = pp_ndraws,
+    reset_output_tables = reset_output_tables,
+    saved_dir = "saved",
+    run_check_model = FALSE,
+    output_prefix = "species"
+  )
+
+  bayes_R2_table <- post_tables$bayes_R2_table
+  project_inclusion_table <- post_tables$project_inclusion_table
+  model_results_table <- post_tables$model_results_table
+
+  sampler_diagnostic_table <- make_sampler_diagnostic_table(
+    model_specs = model_specs,
+    saved_model_objects = saved_model_objects,
+    out_file = file.path("output", "model_diagnostics", "species_sampler_diagnostics.csv")
+  )
 }
+

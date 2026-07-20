@@ -4,6 +4,7 @@
 ##   src/writeResultsTable.R
 ##   src/makeBayesR2Table.R
 ##   src/makeModelOutputTables.R
+##   src/makeModelResultsTable.R
 ##
 ## Main exported functions:
 ##   run_host_parasite_model()
@@ -301,6 +302,7 @@ save_model_input_csv <- function(data,
   invisible(out_file)
 }
 
+
 run_host_parasite_model <- function(model_id,
                                     data,
                                     brms_formula,
@@ -328,6 +330,7 @@ run_host_parasite_model <- function(model_id,
                                     run_precheck = TRUE,
                                     run_glmmTMB_precheck = TRUE,
                                     write_ms_table = TRUE,
+                                    write_model_results = TRUE,
                                     ...){
   make_dir(dirname(model_file))
 
@@ -400,6 +403,14 @@ run_host_parasite_model <- function(model_id,
     )
   }
 
+  if (isTRUE(write_model_results) && exists("make_ms_table", mode = "function")) {
+    tryCatch(
+      make_ms_table(model, model_id),
+      error = function(e) warning("make_ms_table failed for ", model_id, ": ",
+                                  conditionMessage(e))
+    )
+  }
+
   save_env <- new.env(parent = emptyenv())
   save_env$model <- model
   save_env$model_data <- model_data
@@ -449,6 +460,257 @@ load_saved_brms_model <- function(model_file){
 
   list(model = model, model_data = model_data, model_metadata = model_metadata)
 }
+
+load_saved_host_parasite_models <- function(model_specs,
+                                            saved_dir = "saved",
+                                            assign_to_environment = TRUE,
+                                            envir = parent.frame(),
+                                            stop_if_missing = TRUE,
+                                            verbose = TRUE){
+  ## Load all saved brms models specified in model_specs without refitting.
+  ##
+  ## This is useful when run_models = FALSE but you want fitted objects in
+  ## the workspace for make.ms.table(), manual checks, or inspection.
+  ##
+  ## Returns a named list of brmsfit objects, named by model_id. If
+  ## assign_to_environment = TRUE, each model is also assigned using
+  ## spec$model_object_name when available.
+
+  if (length(model_specs) == 0) {
+    return(invisible(list()))
+  }
+
+  models <- vector("list", length(model_specs))
+  names(models) <- vapply(model_specs, function(spec) spec$model_id, character(1))
+
+  for (spec in model_specs) {
+    model_id <- spec$model_id
+    model_file <- spec$model_file %||% file.path(saved_dir, paste0(model_id, ".Rdata"))
+
+    if (!file.exists(model_file)) {
+      msg <- paste("Saved model file not found:", model_file)
+      if (isTRUE(stop_if_missing)) {
+        stop(msg)
+      } else {
+        warning(msg)
+        next
+      }
+    }
+
+    saved <- load_saved_brms_model(model_file)
+    models[[model_id]] <- saved$model
+
+    object_name <- spec$model_object_name %||% model_id
+
+    if (isTRUE(assign_to_environment)) {
+      assign(object_name, saved$model, envir = envir)
+    }
+
+    if (isTRUE(verbose)) {
+      message("Loaded ", model_id, " from ", model_file,
+              " as object `", object_name, "`")
+    }
+  }
+
+  invisible(models)
+}
+
+
+resolve_model_table_output_files <- function(output_prefix = NULL,
+                                             bayes_R2_csv_file_arg = NULL,
+                                             bayes_R2_tex_file_arg = NULL,
+                                             model_results_csv_file_arg = NULL,
+                                             model_results_tex_file_arg = NULL,
+                                             model_results_txt_file_arg = NULL,
+                                             bayes_R2_caption = NULL,
+                                             bayes_R2_label = NULL,
+                                             model_results_caption = NULL,
+                                             model_results_label = NULL){
+  ## Keep old defaults unless a prefix is supplied. A prefix lets the network-
+  ## and species-level scripts write separate table files without changing the
+  ## table-making code in each script.
+  if (!is.null(output_prefix)) {
+    output_prefix <- gsub("[^A-Za-z0-9_-]+", "_", output_prefix)
+  }
+
+  if (is.null(bayes_R2_csv_file_arg)) {
+    bayes_R2_csv_file_arg <- if (is.null(output_prefix)) {
+      bayes_R2_csv_file
+    } else {
+      file.path("tables", paste0(output_prefix, "_bayes_R2_table.csv"))
+    }
+  }
+
+  if (is.null(bayes_R2_tex_file_arg)) {
+    bayes_R2_tex_file_arg <- if (is.null(output_prefix)) {
+      bayes_R2_tex_file
+    } else {
+      file.path("tables", paste0(output_prefix, "_bayes_R2_table.tex"))
+    }
+  }
+
+  if (is.null(model_results_csv_file_arg)) {
+    model_results_csv_file_arg <- if (is.null(output_prefix)) {
+      model_results_csv_file
+    } else {
+      file.path(model_results_dir, paste0(output_prefix, "_model_results.csv"))
+    }
+  }
+
+  if (is.null(model_results_tex_file_arg)) {
+    model_results_tex_file_arg <- if (is.null(output_prefix)) {
+      model_results_tex_file
+    } else {
+      file.path(model_results_dir, paste0(output_prefix, "_model_results.tex"))
+    }
+  }
+
+  if (is.null(model_results_txt_file_arg)) {
+    model_results_txt_file_arg <- if (is.null(output_prefix)) {
+      model_results_txt_file
+    } else {
+      file.path(model_results_dir, paste0(output_prefix, "_model_results_latex_rows.txt"))
+    }
+  }
+
+  if (is.null(bayes_R2_caption)) {
+    bayes_R2_caption <- if (is.null(output_prefix)) {
+      "Bayesian R-squared estimates for host-parasite network models."
+    } else {
+      paste0("Bayesian R-squared estimates for ", output_prefix,
+             " host-parasite models.")
+    }
+  }
+
+  if (is.null(bayes_R2_label)) {
+    bayes_R2_label <- if (is.null(output_prefix)) {
+      "tab:bayes-r2"
+    } else {
+      paste0("tab:", output_prefix, "-bayes-r2")
+    }
+  }
+
+  if (is.null(model_results_caption)) {
+    model_results_caption <- if (is.null(output_prefix)) {
+      "Posterior summaries and directional posterior probabilities for host-parasite network models."
+    } else {
+      paste0("Posterior summaries and directional posterior probabilities for ",
+             output_prefix, " host-parasite models.")
+    }
+  }
+
+  if (is.null(model_results_label)) {
+    model_results_label <- if (is.null(output_prefix)) {
+      "tab:model-results"
+    } else {
+      paste0("tab:", output_prefix, "-model-results")
+    }
+  }
+
+  list(
+    bayes_R2_csv_file = bayes_R2_csv_file_arg,
+    bayes_R2_tex_file = bayes_R2_tex_file_arg,
+    model_results_csv_file = model_results_csv_file_arg,
+    model_results_tex_file = model_results_tex_file_arg,
+    model_results_txt_file = model_results_txt_file_arg,
+    bayes_R2_caption = bayes_R2_caption,
+    bayes_R2_label = bayes_R2_label,
+    model_results_caption = model_results_caption,
+    model_results_label = model_results_label
+  )
+}
+
+post_check_saved_host_parasite_models <- function(model_specs,
+                                                  ndraws = 1000,
+                                                  reset_output_tables = FALSE,
+                                                  saved_dir = "saved",
+                                                  run_check_model = FALSE,
+                                                  mcmc_types = c("trace", "rhat", "neff"),
+                                                  bayes_R2_table = NULL,
+                                                  project_inclusion_table = NULL,
+                                                  model_results_table = NULL,
+                                                  output_prefix = NULL,
+                                                  bayes_R2_csv_file = NULL,
+                                                  bayes_R2_tex_file = NULL,
+                                                  model_results_csv_file = NULL,
+                                                  model_results_tex_file = NULL,
+                                                  model_results_txt_file = NULL,
+                                                  bayes_R2_caption = NULL,
+                                                  bayes_R2_label = NULL,
+                                                  model_results_caption = NULL,
+                                                  model_results_label = NULL){
+  ## Run the full post-model workflow for a list of saved models.
+  ##
+  ## This keeps the model scripts uncluttered and lets you regenerate
+  ## Bayes R2 tables, posterior-probability result tables, project-inclusion
+  ## tables, pp-check PDFs, and MCMC diagnostics without rerunning brm().
+
+  out_files <- resolve_model_table_output_files(
+    output_prefix = output_prefix,
+    bayes_R2_csv_file_arg = bayes_R2_csv_file,
+    bayes_R2_tex_file_arg = bayes_R2_tex_file,
+    model_results_csv_file_arg = model_results_csv_file,
+    model_results_tex_file_arg = model_results_tex_file,
+    model_results_txt_file_arg = model_results_txt_file,
+    bayes_R2_caption = bayes_R2_caption,
+    bayes_R2_label = bayes_R2_label,
+    model_results_caption = model_results_caption,
+    model_results_label = model_results_label
+  )
+
+  if (is.null(bayes_R2_table)) {
+    bayes_R2_table <- init_bayes_R2_table(
+      table_file = out_files$bayes_R2_csv_file,
+      reset = reset_output_tables
+    )
+  }
+
+  if (is.null(project_inclusion_table)) {
+    project_inclusion_table <- init_model_project_table(reset = reset_output_tables)
+  }
+
+  if (is.null(model_results_table)) {
+    model_results_table <- init_model_results_table(
+      table_file = out_files$model_results_csv_file,
+      reset = reset_output_tables
+    )
+  }
+
+  for (spec in model_specs) {
+    post <- check_saved_host_parasite_model(
+      model_id = spec$model_id,
+      model_file = spec$model_file %||%
+        file.path(saved_dir, paste0(spec$model_id, ".Rdata")),
+      resp = spec$response_col,
+      ndraws = ndraws,
+      bayes_R2_table = bayes_R2_table,
+      project_inclusion_table = project_inclusion_table,
+      model_results_table = model_results_table,
+      run_check_model = run_check_model,
+      mcmc_types = mcmc_types,
+      bayes_R2_csv_file = out_files$bayes_R2_csv_file,
+      bayes_R2_tex_file = out_files$bayes_R2_tex_file,
+      model_results_csv_file = out_files$model_results_csv_file,
+      model_results_tex_file = out_files$model_results_tex_file,
+      model_results_txt_file = out_files$model_results_txt_file,
+      bayes_R2_caption = out_files$bayes_R2_caption,
+      bayes_R2_label = out_files$bayes_R2_label,
+      model_results_caption = out_files$model_results_caption,
+      model_results_label = out_files$model_results_label
+    )
+
+    bayes_R2_table <- post$bayes_R2_table
+    project_inclusion_table <- post$project_inclusion_table
+    model_results_table <- post$model_results_table
+  }
+
+  invisible(list(
+    bayes_R2_table = bayes_R2_table,
+    project_inclusion_table = project_inclusion_table,
+    model_results_table = model_results_table
+  ))
+}
+
 
 save_pp_check_pdf <- function(model,
                               model_id,
@@ -698,8 +960,18 @@ check_saved_host_parasite_model <- function(model_id,
                                             ndraws = 1000,
                                             bayes_R2_table = NULL,
                                             project_inclusion_table = NULL,
+                                            model_results_table = NULL,
                                             run_check_model = FALSE,
-                                            mcmc_types = c("trace", "rhat", "neff")){
+                                            mcmc_types = c("trace", "rhat", "neff"),
+                                            bayes_R2_csv_file = NULL,
+                                            bayes_R2_tex_file = NULL,
+                                            model_results_csv_file = NULL,
+                                            model_results_tex_file = NULL,
+                                            model_results_txt_file = NULL,
+                                            bayes_R2_caption = NULL,
+                                            bayes_R2_label = NULL,
+                                            model_results_caption = NULL,
+                                            model_results_label = NULL){
   saved <- load_saved_brms_model(model_file)
   model <- saved$model
   model_data <- saved$model_data
@@ -717,14 +989,50 @@ check_saved_host_parasite_model <- function(model_id,
     save_optional_check_model_pdf(model, model_id)
   }
 
+  out_files <- resolve_model_table_output_files(
+    output_prefix = NULL,
+    bayes_R2_csv_file_arg = bayes_R2_csv_file,
+    bayes_R2_tex_file_arg = bayes_R2_tex_file,
+    model_results_csv_file_arg = model_results_csv_file,
+    model_results_tex_file_arg = model_results_tex_file,
+    model_results_txt_file_arg = model_results_txt_file,
+    bayes_R2_caption = bayes_R2_caption,
+    bayes_R2_label = bayes_R2_label,
+    model_results_caption = model_results_caption,
+    model_results_label = model_results_label
+  )
+
   if (is.null(bayes_R2_table)) {
-    bayes_R2_table <- init_bayes_R2_table()
+    bayes_R2_table <- init_bayes_R2_table(
+      table_file = out_files$bayes_R2_csv_file
+    )
   }
 
   bayes_R2_table <- record_bayes_R2(
     bayes_R2_table,
     model,
-    model_id = model_id
+    model_id = model_id,
+    csv_file = out_files$bayes_R2_csv_file,
+    tex_file = out_files$bayes_R2_tex_file,
+    caption = out_files$bayes_R2_caption,
+    label = out_files$bayes_R2_label
+  )
+
+  if (is.null(model_results_table)) {
+    model_results_table <- init_model_results_table(
+      table_file = out_files$model_results_csv_file
+    )
+  }
+
+  model_results_table <- record_model_results(
+    model_results_table,
+    model,
+    model_id = model_id,
+    csv_file = out_files$model_results_csv_file,
+    tex_file = out_files$model_results_tex_file,
+    txt_file = out_files$model_results_txt_file,
+    caption = out_files$model_results_caption,
+    label = out_files$model_results_label
   )
 
   if (is.null(project_inclusion_table)) {
@@ -744,6 +1052,7 @@ check_saved_host_parasite_model <- function(model_id,
 
   invisible(list(
     bayes_R2_table = bayes_R2_table,
-    project_inclusion_table = project_inclusion_table
+    project_inclusion_table = project_inclusion_table,
+    model_results_table = model_results_table
   ))
 }

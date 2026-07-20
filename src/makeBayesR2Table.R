@@ -145,12 +145,18 @@ write_bayes_R2_latex <- function(r2_table,
 write_bayes_R2_outputs <- function(r2_table,
                                    csv_file = bayes_R2_csv_file,
                                    tex_file = bayes_R2_tex_file,
-                                   digits = 3){
+                                   digits = 3,
+                                   caption = "Bayesian R-squared estimates for host-parasite network models.",
+                                   label = "tab:bayes-r2"){
   dir.create(dirname(csv_file), recursive = TRUE, showWarnings = FALSE)
   write.csv(format_bayes_R2_table(r2_table, digits = digits),
             file = csv_file,
             row.names = FALSE)
-  write_bayes_R2_latex(r2_table, tex_file = tex_file, digits = digits)
+  write_bayes_R2_latex(r2_table,
+                       tex_file = tex_file,
+                       digits = digits,
+                       caption = caption,
+                       label = label)
   invisible(r2_table)
 }
 
@@ -160,7 +166,9 @@ record_bayes_R2 <- function(r2_table,
                             csv_file = bayes_R2_csv_file,
                             tex_file = bayes_R2_tex_file,
                             digits = 3,
-                            print_result = TRUE){
+                            print_result = TRUE,
+                            caption = "Bayesian R-squared estimates for host-parasite network models.",
+                            label = "tab:bayes-r2"){
 
   r2 <- brms::bayes_R2(model)
 
@@ -198,7 +206,9 @@ record_bayes_R2 <- function(r2_table,
   write_bayes_R2_outputs(r2_table,
                          csv_file = csv_file,
                          tex_file = tex_file,
-                         digits = digits)
+                         digits = digits,
+                         caption = caption,
+                         label = label)
 
   invisible(r2_table)
 }
