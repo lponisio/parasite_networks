@@ -165,7 +165,17 @@ plot_network_panel <- function(fit, effect_key, coef_term,
   }
 
   p <- p +
-    viridis::scale_color_viridis(discrete = TRUE) +
+    viridis::scale_color_viridis(
+      discrete = TRUE,
+      name = "Study system",
+      labels = c(
+        "HJA"        = "Cascades Meadows",
+        "PN-COAST"   = "Coast Range Harvested Forests",
+        "PN-OR-FIRE" = "Cascades Post-fire Harvested Forests",
+        "SI"         = "Sky Islands",
+        "SF"         = "Sunflower Fields"
+      )
+    )+
     ggplot2::labs(x = xlab, y = ylab, color = "", fill = "Credible interval")
 
   # Lighter CI bands on black background
@@ -182,6 +192,21 @@ plot_network_panel <- function(fit, effect_key, coef_term,
   theme_fun <- .get_theme_fun(theme)
   if (!is.null(theme_fun)) {
     p <- p + theme_fun()
+  }
+  
+
+  x_vals <- as.numeric(raw_df[[xcol]])
+  x_vals <- x_vals[is.finite(x_vals)]
+  
+  if (length(x_vals) >= 2) {
+    x_limits <- c(
+      min(x_vals),
+      unname(stats::quantile(x_vals, probs = 0.95, na.rm = TRUE))
+    )
+    
+    if (all(is.finite(x_limits)) && x_limits[1] < x_limits[2]) {
+      p <- p + ggplot2::coord_cartesian(xlim = x_limits)
+    }
   }
 
   p

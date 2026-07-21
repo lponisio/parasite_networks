@@ -29,7 +29,7 @@ metrics <- tibble::tribble(
   "zweighted.cluster.coefficient.HL",
   "scalezweighted.cluster.coefficient.HL",
   "zweighted.cluster.coefficient.HL",
-  "Modularity (Clustering coeff.)",
+  "Clustering",
   "zH2",
   "scalezH2",
   "zH2",
@@ -43,6 +43,7 @@ metrics <- tibble::tribble(
 ##  Bombus 
 load("saved/network_bombus_CrithidiaPresence.Rdata")
 ## object: bombus.CrithidiaPresence
+bombus<-model_data
 
 bombus_net <- bombus |> filter(!ProjectSubProject %in% c("SF", "PN-CA-FIRE"))
 
@@ -82,7 +83,7 @@ ggsave("figures/network_bombus.CrithidiaPresence_dark.pdf",
 
 ##  Apis 
 load("saved/network_apis_CrithidiaPresence.Rdata")
-apis_net <- apis[!apis$ProjectSubProject %in% c("PN-CA-FIRE",
+apis_net <- model_data[!model_data$ProjectSubProject %in% c("PN-CA-FIRE",
                                                "PN-COAST", "SF"),]
 apis_crith_fig <- make_network_figure(
   fit = apis.CrithidiaPresence,
@@ -101,7 +102,7 @@ ggsave("figures/network_apis.CrithidiaPresence.pdf",
 ##  Melissodes 
 load("saved/network_melissodes_CrithidiaPresence.Rdata")
 ## object: melissodes.CrithidiaPresence
-mel_net <- melissodes[melissodes$ProjectSubProject %in% c("SF", "SI"),]
+mel_net <- model_data[model_data$ProjectSubProject %in% c("SF", "SI"),]
 mel_crith_fig <- make_network_figure(
   fit = melissodes.CrithidiaPresence,
   raw_df = mel_net,
@@ -121,6 +122,8 @@ ggsave("figures/network_melissodes.CrithidiaPresence.pdf",
 
 ##  Bombus 
 load("saved/network_bombus_ApicystisSpp.Rdata")
+
+
 ## object: bombus.ApicystisSpp
 bombus_apic_fig <- make_network_figure(
   fit = bombus.ApicystisSpp,
@@ -214,9 +217,10 @@ bombus_stack_fig <- make_stacked_parasite_network_figure(
   bottom_trials_col = "GenusScreened",
   metrics_spec = metrics,
   ncol = nrow(metrics),
-  show_points = FALSE,
+  show_points = TRUE,
   theme = "ms"
 )
+
 
 ggsave("figures/network_bombus_parasites_stacked.pdf",
        plot = bombus_stack_fig, width = 20, height = 10)
@@ -238,7 +242,7 @@ apis_stack_fig <- make_stacked_parasite_network_figure(
   bottom_trials_col = "GenusScreened",
   metrics_spec = metrics,
   ncol = nrow(metrics),
-  show_points = FALSE,
+  show_points = TRUE,
   theme = "ms"
 )
 
@@ -262,7 +266,7 @@ mel_stack_fig <- make_stacked_parasite_network_figure(
   bottom_trials_col = "GenusScreened",
   metrics_spec = metrics,
   ncol = nrow(metrics),
-  show_points = FALSE,
+  show_points = TRUE,
   theme = "ms"
 )
 
