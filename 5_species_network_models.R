@@ -21,7 +21,7 @@ library(bayesplot)
 load(file = "data/sp_mets.RData")
 
 ## Toggle these if you want to rerun only one part of the workflow.
-run_models <- FALSE
+run_models <- TRUE
 run_post_checks <- TRUE
 reset_output_tables <- TRUE
 
@@ -63,15 +63,15 @@ phylo_terms <- c(
   net.cols.scale,
   "(1|Site)",
   "(1|Year)",
-  "ProjectSubProject",
+ # "ProjectSubProject",
   "(1|gr(GenusSpecies, cov = phylo_matrix))"
 )
 
 freq_terms <- c(
   net.cols.scale,
   "(1|Site)",
-  "(1|Year)",
-  "ProjectSubProject"
+  "(1|Year)"
+  ## "ProjectSubProject"
 )
 
 

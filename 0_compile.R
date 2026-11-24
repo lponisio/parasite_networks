@@ -181,10 +181,11 @@ nets.si <- nets
 
 ## Combine networks
 all.nets <- c(nets.pnw, nets.sf, nets.si, nets.hja)
-all.nets <- all.nets[apply(sapply(all.nets, dim) > 2, 2, all)]
 
 length(all.nets)
 all.nets <- all.nets[names(all.nets) %in% par.mets$NetworkKey]
+length(all.nets)
+all.nets <- all.nets[apply(sapply(all.nets, dim) > 2, 2, all)]
 length(all.nets)
 
 save(all.nets,
