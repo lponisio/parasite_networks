@@ -10,150 +10,248 @@ library(viridis)
 
 source("src/misc.R")
 source("src/ggplotThemes.R")
-source("src/spNetworkPlotting.R")
+source("src/genusNetworkPlotting.R")
 
 ## *************************************************************
 ## Bombus - Crithidia
 ## *************************************************************
 ## Load model & build CE object on demand inside helper
 load("saved/bombus_CrithidiaPresence.Rdata")  
+bombus<-model_data
 
 ## Restrict raw data as in your script
 sub.bombus <- bombus %>%
   filter(!ProjectSubProject %in% c("SF", "PN-CA-FIRE"))
 
-## Make the five plots in a compact, reproducible way
-p_betweenness <- plot_ce_with_points(
-  fit    = bombus.CrithidiaPresence,
-  effect = "zweighted.betweenness",
-  raw_df = sub.bombus,
-  x      = "zweighted.betweenness",
-  succ   = "SpCrithidiaPresence",
-  trials = "SpScreened",
-  xlab   = "Betweenness centrality",
-  theme = "talk_black",
-  show_points = FALSE
+
+## Each row defines one panel.
+## coef_term should match the corresponding row in fixef(fit).
+metrics_spec <- tibble::tribble(
+  ~effect_key,              ~coef_term,              ~xcol,                   ~xlab,
+  "zweighted.betweenness",  "zweighted.betweenness",  "zweighted.betweenness",  "Betweenness centrality",
+  "zweighted.closeness",    "zweighted.closeness",    "zweighted.closeness",    "Closeness centrality",
+  "zdegree",               "zdegree",               "zdegree",               "Degree (number of plant partners)",
+  "zd",                    "zd",                    "zd",                    "Partner selectivity d'",
+  "zHBOverlap",            "zHBOverlap",            "zHBOverlap",            "Apis floral overlap"
 )
 
-p_closeness <- plot_ce_with_points(
-  bombus.CrithidiaPresence, "zweighted.closeness",
-  sub.bombus, "zweighted.closeness", "SpCrithidiaPresence",
-  "SpScreened",
-  xlab = "Closeness centrality",
-  theme = "talk_black",
-  show_points = FALSE
+bombus.CrithidiaPresence_fig <- make_network_figure(
+  fit           = bombus.CrithidiaPresence,
+  raw_df        = sub.bombus,
+  outcome_label = "Crithidia infection probability",
+  prop_col      = NULL,
+  succ_col      = "SpCrithidiaPresence",
+  trials_col    = "SpScreened",
+  metrics_spec  = metrics_spec,
+  ncol          = 3,
+  show_points   = TRUE)
+
+dir.create("figures", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  filename = "figures/bombus.CrithidiaPresence.pdf",
+  plot     = bombus.CrithidiaPresence_fig,
+  height   = 5,
+  width    = 22,
+  units    = "in",
+  bg       = "black"
 )
 
-p_degree <- plot_ce_with_points(
-  bombus.CrithidiaPresence, "zdegree",
-  sub.bombus, "zdegree", "SpCrithidiaPresence", "SpScreened",
-  xlab = "Degree centrality",
-  theme = "talk_black",
-  show_points = FALSE
-)
 
-p_d <- plot_ce_with_points(
-  bombus.CrithidiaPresence, "zd",
-  sub.bombus, "zd", "SpCrithidiaPresence", "SpScreened",
-  xlab = "d",
-  theme = "talk_black",
-  show_points = FALSE
-)
-
-p_overlap <- plot_ce_with_points(
-  bombus.CrithidiaPresence, "zHBOverlap",
-  sub.bombus, "zHBOverlap", "SpCrithidiaPresence", "SpScreened",
-  xlab = "Apis overlap",
-  theme = "talk_black",
-  show_points = FALSE
-)
-
-## Arrange + save
-bombus.CrithidiaPresence_fig <- ggarrange(
-  p_betweenness, p_closeness, p_degree, p_d, p_overlap,
-  labels = c("A","B","C","D","E"),
-  ncol = 5, nrow = 1, common.legend = TRUE, legend = "bottom"
-)
-
-ggsave("figures/bombus.CrithidiaPresence.pdf",
-       plot = bombus.CrithidiaPresence_fig, height = 5,
-       width = 22)
 
 ## *************************************************************
-## Apis - Crithidia
+## Apis — Crithidia
 ## *************************************************************
 
-load("saved/apis_CrithidiaPresence.Rdata")  ## apis.CrithidiaPresence
+load("saved/apis_CrithidiaPresence.Rdata")
+apis <- model_data
 
-sub.apis <- apis[!apis$ProjectSubProject %in% c("PN-CA-FIRE",
-                                               "PN-COAST", "SF"),]
+sub.apis <- apis %>%
+  filter(!ProjectSubProject %in% c("PN-CA-FIRE", "PN-COAST", "SF"))
+
+apis_metrics_spec <- metrics_spec %>%
+  filter(effect_key != "zHBOverlap")
+
+apis.CrithidiaPresence_fig <- make_network_figure(
+  fit           = apis.CrithidiaPresence,
+  raw_df        = sub.apis,
+  outcome_label = "Crithidia infection probability",
+  prop_col      = NULL,
+  succ_col      = "SpCrithidiaPresence",
+  trials_col    = "SpScreened",
+  metrics_spec  = apis_metrics_spec,
+  ncol          = 4,
+  show_points   = TRUE,
+  theme         = "ms"
+)
+
+ggsave(
+  filename = "figures/apis.CrithidiaPresence.pdf",
+  plot     = apis.CrithidiaPresence_fig,
+  height   = 5,
+  width    = 20,
+  units    = "in",
+  bg       = "white"
+)
 
 
-pA <- plot_ce_with_points(apis.CrithidiaPresence,
-                          "zweighted.betweenness", sub.apis,
-                          "zweighted.betweenness",
-                          "SpCrithidiaPresence", "SpScreened",
-                          xlab = "Betweenness centrality")
+## *************************************************************
+## Bombus — Apicystis
+## *************************************************************
 
-pB <- plot_ce_with_points(apis.CrithidiaPresence,
-                          "zweighted.closeness", sub.apis,
-                          "zweighted.closeness",
-                          "SpCrithidiaPresence", "SpScreened",
-                          xlab = "Closeness centrality")
+load("saved/bombus_ApicystisSpp.Rdata")
+bombus.apicystis_data <- model_data
 
-pC <- plot_ce_with_points(apis.CrithidiaPresence,
-                          "zdegree", sub.apis,
-                          "zdegree", "SpCrithidiaPresence",
-                          "SpScreened",
-                          xlab = "Degree centrality")
+sub.bombus.apicystis <- bombus.apicystis_data %>%
+  filter(!ProjectSubProject %in% c("SF", "PN-CA-FIRE"))
 
-pD <- plot_ce_with_points(apis.CrithidiaPresence,
-                          "zd", sub.apis,
-                          "zd", "SpCrithidiaPresence",
-                          "SpScreened", xlab = "d")
+bombus.ApicystisSpp_fig <- make_network_figure(
+  fit           = bombus.ApicystisSpp,
+  raw_df        = sub.bombus.apicystis,
+  outcome_label = "Apicystis infection probability",
+  prop_col      = NULL,
+  succ_col      = "SpApicystisSpp",
+  trials_col    = "SpScreened",
+  metrics_spec  = metrics_spec,
+  ncol          = 3,
+  show_points   = TRUE,
+  theme         = "ms"
+)
 
-apis.CrithidiaPresence_fig <- ggarrange(pA, pB, pC, pD,
-                                        labels = c("A","B","C","D"),
-                                        ncol = 4, nrow = 1,
-                                        common.legend = TRUE,
-                                        legend = "bottom"
-                                        )
-ggsave("figures/apis.CrithidiaPresence.pdf",
-       plot = apis.CrithidiaPresence_fig, height = 5, width = 20)
+ggsave(
+  filename = "figures/bombus.ApicystisSpp.pdf",
+  plot     = bombus.ApicystisSpp_fig,
+  height   = 5,
+  width    = 22,
+  units    = "in",
+  bg       = "white"
+)
 
-## ## *************************************************************
-## ## Melissodes - Crithidia
-## ## *************************************************************
-## load("saved/melissodes_CrithidiaPresence.Rdata")
-## ## melissodes.CrithidiaPresence
-## sub.mel <- melissodes
+## *************************************************************
+## Apis — Apicystis
+## *************************************************************
 
-## mA <- plot_ce_with_points(melissodes.CrithidiaPresence,
-##                           "zweighted.betweenness", sub.mel,
-##                           "zweighted.betweenness",
-##                           "SpCrithidiaPresence", "SpScreened",
-##                           xlab = "Betweenness centrality")
-## mB <- plot_ce_with_points(melissodes.CrithidiaPresence,
-##                           "zweighted.closeness", sub.mel,
-##                           "zweighted.closeness",
-##                           "SpCrithidiaPresence", "SpScreened",
-##                           xlab = "Closeness centrality")
-## mC <- plot_ce_with_points(melissodes.CrithidiaPresence,
-##                           "zdegree", sub.mel,
-##                           "zdegree", "SpCrithidiaPresence",
-##                           "SpScreened",
-##                           xlab = "Degree centrality")
-## mD <- plot_ce_with_points(melissodes.CrithidiaPresence,
-##                           "zd", sub.mel,
-##                           "zd", "SpCrithidiaPresence",
-##                           "SpScreened", xlab = "d")
+load("saved/apis_ApicystisSpp.Rdata")
+apis.apicystis_data <- model_data
 
-## melissodes.CrithidiaPresence_fig <- ggarrange(mA, mB, mC, mD,
-##   labels = c("A","B","C","D"), ncol = 5, nrow = 1,
-##   common.legend = TRUE, legend = "bottom"
-## )
-## ggsave("figures/melissodes.CrithidiaPresence.pdf",
-##        plot = melissodes.CrithidiaPresence_fig, height = 5, width = 20)
+sub.apis.apicystis <- apis.apicystis_data %>%
+  filter(!ProjectSubProject %in% c("PN-CA-FIRE", "PN-COAST", "SF"))
+
+apis.ApicystisSpp_fig <- make_network_figure(
+  fit           = apis.ApicystisSpp,
+  raw_df        = sub.apis.apicystis,
+  outcome_label = "Apicystis infection probability",
+  prop_col      = NULL,
+  succ_col      = "SpApicystisSpp",
+  trials_col    = "SpScreened",
+  metrics_spec  = apis_metrics_spec,
+  ncol          = 4,
+  show_points   = TRUE,
+  theme         = "ms"
+)
+
+ggsave(
+  filename = "figures/apis.ApicystisSpp.pdf",
+  plot     = apis.ApicystisSpp_fig,
+  height   = 5,
+  width    = 20,
+  units    = "in",
+  bg       = "white"
+)
+
+
+
+
+
+## *************************************************************
+## Bombus — combined parasites: 2 rows × 5 columns
+## *************************************************************
+
+load("saved/bombus_CrithidiaPresence.Rdata")
+bombus.crithidia_data <- model_data %>%
+  filter(!ProjectSubProject %in% c("SF", "PN-CA-FIRE"))
+
+load("saved/bombus_ApicystisSpp.Rdata")
+bombus.apicystis_data <- model_data %>%
+  filter(!ProjectSubProject %in% c("SF", "PN-CA-FIRE"))
+
+bombus.parasites_fig <- make_stacked_parasite_network_figure(
+  fit_top              = bombus.CrithidiaPresence,
+  fit_bottom           = bombus.ApicystisSpp,
+  raw_df_top           = bombus.crithidia_data,
+  raw_df_bottom        = bombus.apicystis_data,
+  top_outcome_label    = "Crithidia infection probability",
+  bottom_outcome_label = "Apicystis infection probability",
+  top_prop_col         = NULL,
+  top_succ_col         = "SpCrithidiaPresence",
+  top_trials_col       = "SpScreened",
+  bottom_prop_col      = NULL,
+  bottom_succ_col      = "SpApicystisSpp",
+  bottom_trials_col    = "SpScreened",
+  metrics_spec         = metrics_spec,
+  ncol                 = 5,
+  show_points          = TRUE,
+  theme                = "ms"
+)
+
+dir.create("figures", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  filename = "figures/bombus_combined_parasites.pdf",
+  plot     = bombus.parasites_fig,
+  width    = 22,
+  height   = 10,
+  units    = "in",
+  bg       = "white"
+)
+
+## *************************************************************
+## Apis — combined parasites: 2 rows × 4 columns
+## *************************************************************
+
+apis_metrics_spec <- metrics_spec %>%
+  filter(effect_key != "zHBOverlap")
+
+load("saved/apis_CrithidiaPresence.Rdata")
+apis.crithidia_data <- model_data %>%
+  filter(!ProjectSubProject %in% c("PN-CA-FIRE", "PN-COAST", "SF"))
+
+load("saved/apis_ApicystisSpp.Rdata")
+apis.apicystis_data <- model_data %>%
+  filter(!ProjectSubProject %in% c("PN-CA-FIRE", "PN-COAST", "SF"))
+
+apis.parasites_fig <- make_stacked_parasite_network_figure(
+  fit_top              = apis.CrithidiaPresence,
+  fit_bottom           = apis.ApicystisSpp,
+  raw_df_top           = apis.crithidia_data,
+  raw_df_bottom        = apis.apicystis_data,
+  top_outcome_label    = "Crithidia infection probability",
+  bottom_outcome_label = "Apicystis infection probability",
+  top_prop_col         = NULL,
+  top_succ_col         = "SpCrithidiaPresence",
+  top_trials_col       = "SpScreened",
+  bottom_prop_col      = NULL,
+  bottom_succ_col      = "SpApicystisSpp",
+  bottom_trials_col    = "SpScreened",
+  metrics_spec         = apis_metrics_spec,
+  ncol                 = 4,
+  show_points          = TRUE,
+  theme                = "ms"
+)
+
+ggsave(
+  filename = "figures/apis_combined_parasites.pdf",
+  plot     = apis.parasites_fig,
+  width    = 18,
+  height   = 10,
+  units    = "in",
+  bg       = "white"
+)
+
+
+
+
+
 
 ## *************************************************************
 ##  Bombus — ApicystisSpp
@@ -257,52 +355,6 @@ apis.ApicystisSpp_fig <- ggarrange(
 
 ggsave("figures/apis.ApicystisSpp.pdf",
        plot = apis.ApicystisSpp_fig, width = 20, height = 5)
-
-## ## *************************************************************
-## ## 3) Melissodes — SpApicystisSpp
-## ## *************************************************************
-## load("saved/melissodes_ApicystisSpp.Rdata")  # provides melissodes.ApicystisSpp
-## sub.mel <- melissodes
-
-## m_betweenness <- make_panel(melissodes.ApicystisSpp,
-##                             "zweighted.betweenness",
-##                             sub.mel, "zweighted.betweenness",
-##                             "SpApicystisSpp", "SpScreened",
-##                             "Betweenness centrality")
-
-## m_closeness   <- make_panel(melissodes.ApicystisSpp,
-##                             "zweighted.closeness",
-##                             sub.mel, "zweighted.closeness",
-##                             "SpApicystisSpp", "SpScreened",
-##                             "Closeness centrality")
-
-## m_degree      <- make_panel(melissodes.ApicystisSpp, "zdegree",
-##                             sub.mel, "zdegree",
-##                             "SpApicystisSpp", "SpScreened",
-##                             "Degree centrality")
-
-## m_d           <- make_panel(melissodes.ApicystisSpp, "zd",
-##                             sub.mel, "zd",
-##                             "SpApicystisSpp", "SpScreened",
-##                             "d")
-
-## m_overlap     <- make_panel(melissodes.ApicystisSpp, "zHBOverlap",
-##                             sub.mel, "zHBOverlap",
-##                             "SpApicystisSpp", "SpScreened",
-##                             "HB overlap")
-
-## mel_panels <- list(m_betweenness, m_closeness, m_degree, m_d, m_overlap)
-## mel_panels <- Filter(Negate(is.null), mel_panels)
-
-## melissodes.ApicystisSpp_fig <- ggarrange(
-##   plotlist = mel_panels,
-##   labels = LETTERS[seq_along(mel_panels)],
-##   ncol = 5, nrow = 1,
-##   common.legend = TRUE, legend = "bottom"
-## )
-
-## ggsave("figures/melissodes.ApicystisSpp.pdf",
-##        plot = melissodes.ApicystisSpp_fig, width = 22, height = 5)
 
 
 ## *************************************************************

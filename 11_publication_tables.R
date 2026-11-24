@@ -1,206 +1,254 @@
 # ============================================================
-# Descriptive supplementary tables
-#   1. Survey effort and total hours
-#   2. Individuals screened by species
-#   3. Parasite screening rates
-#
-# Post-fire datasets from Oregon and California are combined.
+# Survey effort for networks represented in model data
+# Each project-site-year-round is counted once across hosts
+# and parasite files.
 # ============================================================
 
+rm(list = ls())
+setwd("~/Dropbox (University of Oregon)/parasite_networks")
 library(tidyverse)
 
-saved_path <- "saved"
+# 1. Load network model data ----------------------------------
 
-# ============================================================
-# 1. Load the current model data frames
-# ============================================================
-
-rdata_files <- list.files(
-  saved_path,
-  pattern = "^(apis|bombus|melissodes)_.*\\.Rdata$",
+files <- list.files(
+  "saved",
+  pattern = "^network_(apis|bombus|melissodes)_ApicystisSpp\\.Rdata$",
   full.names = TRUE,
   ignore.case = TRUE
 )
 
-if (length(rdata_files) == 0) {
-  stop("No host model-data Rdata files were found in saved/.")
-}
+if (!length(files)) stop("No network model-data files found.")
 
-load_one_rdata <- function(path) {
+model_dat <- map_dfr(files, function(path) {
+  env <- new.env()
+  load(path, envir = env)
   
-  env <- new.env(parent = emptyenv())
-  object_names <- load(path, envir = env)
-  objects <- mget(object_names, envir = env)
-  
-  data_objects <- objects[
-    vapply(objects, is.data.frame, logical(1))
-  ]
-  
-  if (length(data_objects) == 0) {
-    stop("No data frame found in: ", basename(path))
+  if (!is.data.frame(env$model_data)) {
+    stop("Missing model_data in ", basename(path))
   }
   
-  # Retain the largest data frame in each saved file.
-  dat <- data_objects[[which.max(vapply(data_objects, nrow, integer(1)))]]
-  
-  dat %>%
+  as_tibble(env$model_data) %>%
     mutate(source_file = basename(path))
-}
-
-model_dat <- map_dfr(rdata_files, load_one_rdata)
-
-
-# ============================================================
-# 2. Standardize study-system labels
-# ============================================================
-
-model_dat <- model_dat %>%
+}) %>%
   mutate(
-    StudySystemCode = case_when(
-      ProjectSubProject == "HJA" ~ "HJA",
-      ProjectSubProject == "SI" ~ "SI",
-      ProjectSubProject == "SF" ~ "SF",
-      ProjectSubProject == "PN-COAST" ~ "PN-COAST",
-      
-      # Combine Oregon and California post-fire datasets.
-      ProjectSubProject %in% c(
-        "PN-OR-FIRE",
-        "PN-CA-FIRE"
-      ) ~ "PN-FIRE",
-      
-      TRUE ~ as.character(ProjectSubProject)
+    across(
+      c(ProjectSubProject, Site, SampleRound, UniNetwork),
+      ~ trimws(as.character(.x))
     ),
-    
-    StudySystem = recode(
-      StudySystemCode,
-      "HJA" = "Cascades Meadows",
-      "SI" = "Sky Islands Meadows",
-      "SF" = "California Sunflower Fields",
-      "PN-COAST" = "Coast Range Harvested Forests",
-      "PN-FIRE" = "Post-fire Harvested Forests"
-    )
+    Year = as.integer(as.character(Year)),
+    SurveyMin = as.numeric(as.character(SurveyMin))
   )
 
-study_system_order <- c(
-  "Cascades Meadows",
-  "Sky Islands Meadows",
-  "California Sunflower Fields",
-  "Coast Range Harvested Forests",
-  "Post-fire Harvested Forests"
+# 2. Set reporting labels; retain original project identities --
+
+labels <- c(
+  "HJA" = "Cascades Meadows",
+  "SI" = "Sky Islands Meadows",
+  "SF" = "California Sunflower Fields",
+  "PN-COAST" = "Coast Range Harvested Forests",
+  "PN-OR-FIRE" = "Oregon Post-fire Harvested Forests",
+  "PN-CA-FIRE" = "California Post-fire Harvested Forests"
 )
 
 model_dat <- model_dat %>%
   mutate(
+    StudySystemCode = ProjectSubProject,
     StudySystem = factor(
-      StudySystem,
-      levels = study_system_order
+      unname(labels[StudySystemCode]),
+      levels = unname(labels)
     )
   )
 
-# ============================================================
-# 3. Survey effort and total hours
-# ============================================================
+# 3. Validate identifiers and effort before deduplicating ------
 
-survey_events <- model_dat %>%
-  mutate(
-    # Preserve project identity so sites with the same label
-    # in different datasets are not merged.
-    SiteID = interaction(
-      ProjectSubProject,
-      Site,
-      drop = TRUE
-    ),
-    
-    SurveyID = interaction(
-      ProjectSubProject,
-      Site,
-      Year,
-      SampleRound,
-      drop = TRUE
-    )
-  ) %>%
-  distinct(
-    SurveyID,
-    StudySystem,
-    StudySystemCode,
-    SiteID,
-    Year,
-    SampleRound,
-    SurveyMin,
-    .keep_all = TRUE
-  )
+key <- c("ProjectSubProject", "Site", "Year", "SampleRound")
 
-format_minutes <- function(x) {
-  
-  x <- sort(unique(na.omit(as.numeric(x))))
-  
-  if (length(x) == 0) {
-    ""
-  } else if (length(x) == 1) {
-    if (x >= 60) {
-      paste0(round(x / 60, 2), " hr")
-    } else {
-      paste0(round(x, 1), " min")
-    }
-  } else {
-    paste0(
-      round(min(x), 1),
-      "--",
-      round(max(x), 1),
-      " min"
-    )
-  }
+if (any(model_dat %>% transmute(
+  bad = if_any(
+    all_of(c(key, "UniNetwork")),
+    ~ is.na(.x) | as.character(.x) == ""
+  ) | is.na(StudySystem)
+) %>% pull(bad))) {
+  stop("Missing identifiers or unknown study-system labels.")
 }
 
-rounds_by_year <- survey_events %>%
-  group_by(StudySystem, Year) %>%
+identity_map <- model_dat %>%
+  distinct(across(all_of(c(key, "UniNetwork"))))
+
+if (
+  any(count(identity_map, across(all_of(key)))$n > 1) ||
+  any(count(identity_map, ProjectSubProject, UniNetwork)$n > 1)
+) {
+  stop("Survey and network identifiers are not one-to-one.")
+}
+
+conflicts <- model_dat %>%
+  group_by(across(all_of(key))) %>%
   summarise(
-    rounds = n_distinct(SampleRound),
+    effort_values = n_distinct(SurveyMin, na.rm = TRUE),
     .groups = "drop"
   ) %>%
-  group_by(StudySystem) %>%
+  filter(effort_values > 1)
+
+if (nrow(conflicts)) {
+  print(conflicts, n = Inf)
+  stop("Conflicting effort values for the same survey.")
+}
+
+# Collapse copies, using the available effort value.
+survey_events <- model_dat %>%
+  group_by(across(all_of(key))) %>%
   summarise(
-    rounds_per_year = case_when(
-      n() == 0 ~ "",
-      min(rounds) == max(rounds) ~ as.character(max(rounds)),
-      TRUE ~ paste0(min(rounds), "--", max(rounds))
-    ),
+    UniNetwork = first(UniNetwork),
+    StudySystem = first(StudySystem),
+    SurveyMin = first(SurveyMin[!is.na(SurveyMin)],
+                      default = NA_real_),
     .groups = "drop"
   )
+
+if (any(!is.finite(survey_events$SurveyMin) |
+        survey_events$SurveyMin < 0)) {
+  stop("Missing or invalid survey effort.")
+}
+
+# 4. Summarize unique surveys ---------------------------------
+
+range_text <- function(x) {
+  if (min(x) == max(x)) as.character(min(x)) else
+    paste0(min(x), "--", max(x))
+}
+
+rounds <- survey_events %>%
+  count(StudySystem, ProjectSubProject, Site, Year) %>%
+  group_by(StudySystem) %>%
+  summarise(rounds_per_year = range_text(n), .groups = "drop")
 
 survey_effort <- survey_events %>%
   group_by(StudySystem) %>%
   summarise(
-    sites = n_distinct(SiteID),
-    
-    years = if_else(
-      n_distinct(Year) == 1,
-      as.character(first(Year)),
-      paste0(
-        min(Year, na.rm = TRUE),
-        "--",
-        max(Year, na.rm = TRUE)
-      )
-    ),
-    
-    time_per_round = format_minutes(SurveyMin),
-    
-    surveys = n_distinct(SurveyID),
-    
-    total_hours = round(
-      sum(as.numeric(SurveyMin), na.rm = TRUE) / 60,
-      1
-    ),
-    
+    sites = nrow(distinct(pick(ProjectSubProject, Site))),
+    years = paste(sort(unique(Year)), collapse = ", "),
+    time_per_round = paste0(range_text(SurveyMin), " min"),
+    surveys = n(),
+    total_hours = round(sum(SurveyMin) / 60, 1),
     .groups = "drop"
   ) %>%
-  left_join(
-    rounds_by_year,
-    by = "StudySystem"
-  ) %>%
+  left_join(rounds, by = "StudySystem") %>%
   arrange(StudySystem)
 
-survey_effort
+print(survey_effort, n = Inf, width = Inf)
+
+# ============================================================
+# 5. Network richness and distinct interaction links
+# Assumes network rows = plants, columns = pollinators.
+# Links count unique plant-pollinator pairs, not total visits.
+# ============================================================
+
+metrics <- c(
+  "number.of.species.HL",
+  "number.of.species.LL",
+  "connectance"
+)
+
+# Check that repeated copies of each network agree.
+metric_conflicts <- model_dat %>%
+  group_by(ProjectSubProject, UniNetwork) %>%
+  summarise(
+    across(all_of(metrics), ~ n_distinct(.x, na.rm = TRUE)),
+    .groups = "drop"
+  ) %>%
+  filter(if_any(all_of(metrics), ~ .x > 1))
+
+if (nrow(metric_conflicts)) {
+  print(metric_conflicts, n = Inf)
+  stop("Conflicting metrics for the same network.")
+}
+
+# Collapse repeated records, retaining available metric values.
+network_dat <- model_dat %>%
+  group_by(ProjectSubProject, UniNetwork) %>%
+  summarise(
+    StudySystem = first(StudySystem),
+    across(
+      all_of(metrics),
+      ~ first(.x[!is.na(.x)], default = NA_real_)
+    ),
+    .groups = "drop"
+  ) %>%
+  rename(
+    pollinator_richness = number.of.species.HL,
+    plant_richness = number.of.species.LL
+  ) %>%
+  mutate(
+    interaction_links =
+      connectance * pollinator_richness * plant_richness
+  )
+
+# Inspect networks with unavailable metrics.
+network_dat %>%
+  filter(if_any(
+    c(plant_richness, pollinator_richness, interaction_links),
+    ~ !is.finite(.x)
+  )) %>%
+  print(n = Inf, width = Inf)
+
+# Treat unavailable values as NA, not zero.
+network_dat <- network_dat %>%
+  mutate(across(
+    c(plant_richness, pollinator_richness, interaction_links),
+    ~ replace(.x, !is.finite(.x), NA_real_)
+  ))
+
+# Check reconstructed links where values are available.
+if (any(
+  abs(network_dat$interaction_links -
+      round(network_dat$interaction_links)) > 1e-6,
+  na.rm = TRUE
+)) {
+  stop("Non-integer link counts: check raw connectance and richness.")
+}
+
+network_dat <- network_dat %>%
+  mutate(interaction_links = round(interaction_links))
+
+safe_mean <- function(x) {
+  if (all(is.na(x))) NA_real_ else mean(x, na.rm = TRUE)
+}
+
+safe_median <- function(x) {
+  if (all(is.na(x))) NA_real_ else median(x, na.rm = TRUE)
+}
+
+network_summary <- network_dat %>%
+  group_by(StudySystem) %>%
+  summarise(
+    networks = n(),
+    across(
+      c(plant_richness, pollinator_richness, interaction_links),
+      list(
+        n = ~ sum(!is.na(.x)),
+        mean = safe_mean,
+        median = safe_median
+      ),
+      .names = "{.col}_{.fn}"
+    ),
+    .groups = "drop"
+  ) %>%
+  mutate(across(
+    ends_with("_mean") | ends_with("_median"),
+    ~ round(.x, 1)
+  ))
+
+survey_effort_extended <- survey_effort %>%
+  left_join(network_summary, by = "StudySystem")
+
+print(survey_effort_extended, n = Inf, width = Inf)
+
+
+
+
+
+
 
 # ============================================================
 # Combined table:
@@ -567,3 +615,100 @@ combined_species_latex <- paste(
 )
 
 cat(combined_species_latex)
+
+
+
+
+# ============================================================
+# B. Syrphid parasite rates from raw sunflower specimen data
+# ============================================================
+load("../sunflower/data/spec_RBCL_16s.Rdata")
+
+
+spec_individuals <- spec %>%
+  mutate(
+    specimen_id = case_when(
+      "UniqueID" %in% names(.) & !is.na(UniqueID) ~ as.character(UniqueID),
+      "TempID" %in% names(.) & !is.na(TempID) ~ paste0("TempID_", TempID),
+      TRUE ~ paste0("row_", row_number())
+    )
+  ) %>%
+  distinct(specimen_id, .keep_all = TRUE)
+
+
+syrphid_spec <- spec_individuals %>%
+  filter(Family == "Syrphidae",
+         Pathogen==1)
+
+
+crithidia_cols <- intersect(
+  c("CrithidiaSpp", "CrithidiaBombi", "CrithidiaExpoeki"),
+  names(syrphid_spec)
+)
+
+
+nosema_bombi_cols <- intersect(
+  c("NosemaBombi"),
+  names(syrphid_spec)
+)
+
+
+nosema_ceranae_cols <- intersect(
+  c("NosemaCeranae"),
+  names(syrphid_spec)
+)
+
+
+any_screened <- function(dat, cols) {
+  if (length(cols) == 0) return(rep(FALSE, nrow(dat)))
+  rowSums(!is.na(dat[, cols, drop = FALSE])) > 0
+}
+
+
+any_positive <- function(dat, cols) {
+  if (length(cols) == 0) return(rep(FALSE, nrow(dat)))
+  rowSums(dat[, cols, drop = FALSE] == 1, na.rm = TRUE) > 0
+}
+
+
+syrphid_parasites <- syrphid_spec %>%
+  mutate(
+    crithidia_screened = any_screened(., crithidia_cols),
+    crithidia_positive = any_positive(., crithidia_cols),
+    
+    apicystis_screened = !is.na(Apicystis),
+    apicystis_positive = Apicystis == 1,
+    
+    nosema_bombi_screened = any_screened(., nosema_bombi_cols),
+    nosema_bombi_positive = any_positive(., nosema_bombi_cols),
+    
+    nosema_ceranae_screened = any_screened(., nosema_ceranae_cols),
+    nosema_ceranae_positive = any_positive(., nosema_ceranae_cols)
+  )
+
+format_rate <- function(pos, screened, digits = 1) {
+  if (is.na(screened) || screened == 0) return("")
+  paste0(pos, "/", screened, " (", round(100 * pos / screened, digits), "\\%)")
+}
+
+
+syrphid_summary <- tibble(
+  StudySystem = "California Sunflower Fields",
+  Genus = "Syrphidae",
+  Crithidia = format_rate(
+    sum(syrphid_parasites$crithidia_positive, na.rm = TRUE),
+    sum(syrphid_parasites$crithidia_screened, na.rm = TRUE)
+  ),
+  Apicystis = format_rate(
+    sum(syrphid_parasites$apicystis_positive, na.rm = TRUE),
+    sum(syrphid_parasites$apicystis_screened, na.rm = TRUE)
+  ),
+  `Nosema bombi` = format_rate(
+    sum(syrphid_parasites$nosema_bombi_positive, na.rm = TRUE),
+    sum(syrphid_parasites$nosema_bombi_screened, na.rm = TRUE)
+  ),
+  `Nosema ceranae` = format_rate(
+    sum(syrphid_parasites$nosema_ceranae_positive, na.rm = TRUE),
+    sum(syrphid_parasites$nosema_ceranae_screened, na.rm = TRUE)
+  )
+)
